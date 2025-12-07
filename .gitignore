@@ -1,0 +1,37 @@
+# Gradle
+.gradle/
+build/
+/app/build/
+
+# Android Studio
+.idea/
+*.iml
+.DS_Store
+*.apk
+*.jks
+*.keystore
+
+# Local properties
+local.properties
+
+# Log files
+*.log
+
+# Generated files
+.classpath
+.project
+.settings/
+gen/
+out/
+*.swp
+
+# Kotlin
+*.kotlin_module
+
+# Proguard
+proguard/
+
+# Signing
+*.jks
+*.keystore
+signing.properties
