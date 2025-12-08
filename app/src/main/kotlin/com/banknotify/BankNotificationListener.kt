@@ -19,8 +19,7 @@ class BankNotificationListener : NotificationListenerService() {
 
     companion object {
         private const val TAG = "BankNotifyListener"
-        private const val SBER_PACKAGE = "ru.sberbankmobile"
-        private const val RSHB_PACKAGE = "ru.rshb.mbank"
+        private const val TELEGRAM_PACKAGE = "org.telegram.messenger"
     }
 
     override fun onCreate() {
@@ -34,29 +33,24 @@ class BankNotificationListener : NotificationListenerService() {
         sbn ?: return
 
         val packageName = sbn.packageName
+
+        // Только уведомления из Telegram
+        if (packageName != TELEGRAM_PACKAGE) return
+
         val notification = sbn.notification
         val extras = notification.extras
 
         val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: return
         val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: ""
 
-        Log.d(TAG, "Notification from $packageName: $title - $text")
+        Log.d(TAG, "Telegram notification: $title - $text")
 
         scope.launch {
             try {
-                val bankNotif = when (packageName) {
-                    SBER_PACKAGE -> BankNotificationParser.parseSber(text, title)
-                    RSHB_PACKAGE -> BankNotificationParser.parseRshb(text, title)
-                    else -> null
-                }
-
-                if (bankNotif != null) {
-                    val id = database.notificationDao().insert(bankNotif)
-                    telegramSender.send(bankNotif, id)
-                    Log.d(TAG, "Notification processed and sent: $bankNotif")
-                }
+                telegramSender.sendSimple("📩 <b>$title</b>\n\n$text")
+                Log.d(TAG, "Telegram notification forwarded: $title")
             } catch (e: Exception) {
-                Log.e(TAG, "Error processing notification", e)
+                Log.e(TAG, "Error forwarding notification", e)
             }
         }
     }

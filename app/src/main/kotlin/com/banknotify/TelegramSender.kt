@@ -87,6 +87,36 @@ class TelegramSender(
         }
     }
 
+    suspend fun sendSimple(message: String): Boolean {
+        val token = prefs.getString("telegram_token", "") ?: return false
+        val chatId = prefs.getString("telegram_chat_id", "") ?: return false
+
+        if (token.isEmpty() || chatId.isEmpty()) return false
+
+        return try {
+            val requestBody = mapOf(
+                "chat_id" to chatId,
+                "text" to message,
+                "parse_mode" to "HTML"
+            ).let {
+                Gson().toJson(it).toRequestBody("application/json".toMediaType())
+            }
+
+            val request = Request.Builder()
+                .url("https://api.telegram.org/bot$token/sendMessage")
+                .post(requestBody)
+                .build()
+
+            httpClient.newCall(request).execute().use { response ->
+                Log.d("TelegramSender", "Response: ${response.code}")
+                response.isSuccessful
+            }
+        } catch (e: IOException) {
+            Log.e("TelegramSender", "Send failed", e)
+            false
+        }
+    }
+
     suspend fun sendTest(): Boolean {
         val token = prefs.getString("telegram_token", "") ?: return false
         val chatId = prefs.getString("telegram_chat_id", "") ?: return false
