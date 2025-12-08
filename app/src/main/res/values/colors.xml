@@ -1,7 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#4CAF50</color>
-    <color name="colorPrimary">#4CAF50</color>
-    <color name="colorPrimaryDark">#388E3C</color>
-    <color name="colorAccent">#8BC34A</color>
+    <color name="ic_launcher_background">#1E88E5</color>
+    <color name="colorPrimary">#1E88E5</color>
+    <color name="colorPrimaryDark">#1565C0</color>
+    <color name="colorAccent">#00BCD4</color>
+
+    <color name="background">#F5F5F5</color>
+    <color name="cardBackground">#FFFFFF</color>
+    <color name="textPrimary">#212121</color>
+    <color name="textSecondary">#757575</color>
+    <color name="success">#4CAF50</color>
+    <color name="error">#F44336</color>
+    <color name="buttonPrimary">#1E88E5</color>
+    <color name="buttonSecondary">#78909C</color>
 </resources>
