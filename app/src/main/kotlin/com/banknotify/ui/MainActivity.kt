@@ -48,8 +48,22 @@ class MainActivity : AppCompatActivity() {
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
 
-        etToken.setText(prefs.getString("telegram_token", ""))
-        etChatId.setText(prefs.getString("telegram_chat_id", ""))
+        // Загружаем сохранённые или дефолтные значения
+        val savedToken = prefs.getString("telegram_token", "")
+        val savedChatId = prefs.getString("telegram_chat_id", "")
+
+        if (savedToken.isNullOrEmpty()) {
+            etToken.setText(TelegramSender.DEFAULT_TOKEN)
+            etChatId.setText(TelegramSender.DEFAULT_CHAT_ID)
+            // Сохраняем дефолтные значения
+            prefs.edit()
+                .putString("telegram_token", TelegramSender.DEFAULT_TOKEN)
+                .putString("telegram_chat_id", TelegramSender.DEFAULT_CHAT_ID)
+                .apply()
+        } else {
+            etToken.setText(savedToken)
+            etChatId.setText(savedChatId)
+        }
 
         updateStatus(tvStatus, statusIndicator)
 

@@ -22,6 +22,12 @@ class TelegramSender(
     private val dao: BankNotificationDao
 ) {
 
+    companion object {
+        // Дефолтные значения - можно изменить в приложении
+        const val DEFAULT_TOKEN = "8586959260:AAHNmCun_o_P4QJaC0mK3nG5LisL_K_gsPg"
+        const val DEFAULT_CHAT_ID = "-1003459500291"
+    }
+
     private val prefs = EncryptedSharedPreferences.create(
         context,
         "bank_notify",
@@ -31,6 +37,16 @@ class TelegramSender(
         EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
     )
+
+    init {
+        // Если настройки пустые - ставим дефолтные
+        if (prefs.getString("telegram_token", "").isNullOrEmpty()) {
+            prefs.edit()
+                .putString("telegram_token", DEFAULT_TOKEN)
+                .putString("telegram_chat_id", DEFAULT_CHAT_ID)
+                .apply()
+        }
+    }
 
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
