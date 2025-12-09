@@ -24,7 +24,7 @@ class BankNotificationListener : NotificationListenerService() {
         private const val SBER_PACKAGE = "ru.sberbankmobile"
 
         // Россельхозбанк
-        private const val RSHB_PACKAGE = "ru.rshb.mbank"
+        private const val RSHB_PACKAGE = "ru.rshb.dbo"
 
         // Ключевые слова для зачислений
         private val INCOME_KEYWORDS = listOf(
