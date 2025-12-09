@@ -19,7 +19,19 @@ class BankNotificationListener : NotificationListenerService() {
 
     companion object {
         private const val TAG = "BankNotifyListener"
-        private const val TELEGRAM_PACKAGE = "org.telegram.messenger"
+
+        // Сбербанк
+        private const val SBER_PACKAGE = "ru.sberbankmobile"
+
+        // Россельхозбанк
+        private const val RSHB_PACKAGE = "ru.rshb.mbank"
+
+        // Ключевые слова для зачислений
+        private val INCOME_KEYWORDS = listOf(
+            "зачисление", "поступление", "перевод от", "получен перевод",
+            "входящий перевод", "пополнение", "возврат", "кэшбэк",
+            "начисление", "зачислено", "поступило", "+", "получено"
+        )
     }
 
     override fun onCreate() {
@@ -34,21 +46,39 @@ class BankNotificationListener : NotificationListenerService() {
 
         val packageName = sbn.packageName
 
-        // Только Telegram
-        if (packageName != TELEGRAM_PACKAGE) return
+        // Только Сбербанк и Россельхозбанк
+        val bankName = when (packageName) {
+            SBER_PACKAGE -> "Сбербанк"
+            RSHB_PACKAGE -> "Россельхозбанк"
+            else -> return
+        }
 
         val notification = sbn.notification
         val extras = notification.extras
 
         val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: return
         val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: ""
+        val fullText = "$title $text".lowercase()
 
-        Log.d(TAG, "Telegram notification: $title - $text")
+        Log.d(TAG, "Bank notification from $bankName: $title - $text")
+
+        // Проверяем что это зачисление
+        val isIncome = INCOME_KEYWORDS.any { keyword -> fullText.contains(keyword) }
+        if (!isIncome) {
+            Log.d(TAG, "Skipping non-income notification")
+            return
+        }
 
         scope.launch {
             try {
-                telegramSender.sendSimple("📩 <b>$title</b>\n\n$text")
-                Log.d(TAG, "Telegram notification forwarded")
+                val message = """
+                    💰 <b>$bankName</b>
+
+                    $text
+                """.trimIndent()
+
+                telegramSender.sendSimple(message)
+                Log.d(TAG, "Income notification forwarded from $bankName")
             } catch (e: Exception) {
                 Log.e(TAG, "Error forwarding notification", e)
             }
