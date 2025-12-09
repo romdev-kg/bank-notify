@@ -32,6 +32,9 @@ class BankNotificationListener : NotificationListenerService() {
             "входящий перевод", "пополнение", "возврат", "кэшбэк",
             "начисление", "зачислено", "поступило", "+", "получено"
         )
+
+        // Регулярка для извлечения суммы
+        private val AMOUNT_REGEX = Regex("""[+＋]?\s*(\d[\d\s]*[.,]?\d*)\s*(?:₽|руб|RUB|р\.)""", RegexOption.IGNORE_CASE)
     }
 
     override fun onCreate() {
@@ -69,16 +72,19 @@ class BankNotificationListener : NotificationListenerService() {
             return
         }
 
+        // Извлекаем сумму
+        val amount = extractAmount(fullText)
+        if (amount == null) {
+            Log.d(TAG, "Could not extract amount from: $fullText")
+            return
+        }
+
         scope.launch {
             try {
-                val message = """
-                    💰 <b>$bankName</b>
-
-                    $text
-                """.trimIndent()
+                val message = "💰 +$amount руб."
 
                 telegramSender.sendSimple(message)
-                Log.d(TAG, "Income notification forwarded from $bankName")
+                Log.d(TAG, "Income notification forwarded: $amount from $bankName")
             } catch (e: Exception) {
                 Log.e(TAG, "Error forwarding notification", e)
             }
@@ -93,5 +99,25 @@ class BankNotificationListener : NotificationListenerService() {
         super.onDestroy()
         scope.cancel()
         Log.d(TAG, "BankNotificationListener destroyed")
+    }
+
+    private fun extractAmount(text: String): String? {
+        val match = AMOUNT_REGEX.find(text) ?: return null
+        val rawAmount = match.groupValues[1]
+            .replace(" ", "")
+            .replace(",", ".")
+            .trim()
+
+        // Форматируем сумму
+        return try {
+            val number = rawAmount.toDouble()
+            if (number == number.toLong().toDouble()) {
+                number.toLong().toString()
+            } else {
+                String.format("%.2f", number)
+            }
+        } catch (e: NumberFormatException) {
+            rawAmount
+        }
     }
 }
