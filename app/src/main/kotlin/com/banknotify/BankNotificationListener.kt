@@ -31,6 +31,16 @@ class BankNotificationListener : NotificationListenerService() {
 
         // Регулярка для извлечения суммы
         private val AMOUNT_REGEX = Regex("""[+＋]?\s*(\d[\d\s]*[.,]?\d*)\s*(?:₽|руб|RUB|р)(?:\s|$|\.)""", RegexOption.IGNORE_CASE)
+
+        // Регулярки для извлечения отправителя
+        private val SENDER_PATTERNS = listOf(
+            // Сбер: "Перевод от Семён Дмитриевич П."
+            Regex("""перевод от\s+([А-ЯЁа-яё]+\s+[А-ЯЁа-яё]+\.?\s*[А-ЯЁа-яё]?\.?)""", RegexOption.IGNORE_CASE),
+            // РСХБ: "Семен Дмитриевич П из Сбербанк"
+            Regex("""СБП[.\s]+([А-ЯЁа-яё]+\s+[А-ЯЁа-яё]+\.?\s*[А-ЯЁа-яё]?\.?)\s+из""", RegexOption.IGNORE_CASE),
+            // Общий: "от Имя Фамилия"
+            Regex("""от\s+([А-ЯЁа-яё]+\s+[А-ЯЁа-яё]+\.?\s*[А-ЯЁа-яё]?\.?)""", RegexOption.IGNORE_CASE)
+        )
     }
 
     private val prefs by lazy {
@@ -93,12 +103,21 @@ class BankNotificationListener : NotificationListenerService() {
             return
         }
 
+        // Извлекаем отправителя
+        val sender = extractSender(fullText)
+
         scope.launch {
             try {
-                val message = "$amount рублей"
+                val message = buildString {
+                    append("$amount ₽")
+                    if (sender != null) {
+                        append(" от $sender")
+                    }
+                    append(" ($appName)")
+                }
 
                 telegramSender.sendSimple(message)
-                Log.d(TAG, "Income notification forwarded: $amount from $appName")
+                Log.d(TAG, "Income notification forwarded: $amount from $appName, sender: $sender")
             } catch (e: Exception) {
                 Log.e(TAG, "Error forwarding notification", e)
             }
@@ -133,5 +152,15 @@ class BankNotificationListener : NotificationListenerService() {
         } catch (e: NumberFormatException) {
             rawAmount
         }
+    }
+
+    private fun extractSender(text: String): String? {
+        for (pattern in SENDER_PATTERNS) {
+            val match = pattern.find(text)
+            if (match != null) {
+                return match.groupValues[1].trim()
+            }
+        }
+        return null
     }
 }
