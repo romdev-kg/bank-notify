@@ -1,7 +1,6 @@
 package com.banknotify
 
 import android.content.Context
-import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -118,23 +117,24 @@ object BankAppsManager {
     }
 
     /**
-     * Возвращает список всех установленных приложений
+     * Возвращает список всех установленных приложений (не системных)
      */
     fun getAllInstalledApps(context: Context): List<InstalledApp> {
         val pm = context.packageManager
-        val intent = Intent(Intent.ACTION_MAIN).apply {
-            addCategory(Intent.CATEGORY_LAUNCHER)
-        }
 
-        return pm.queryIntentActivities(intent, 0)
-            .map { resolveInfo ->
+        return pm.getInstalledApplications(PackageManager.GET_META_DATA)
+            .filter { appInfo ->
+                // Исключаем системные приложения без обновлений
+                (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) == 0 ||
+                (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+            }
+            .map { appInfo ->
                 InstalledApp(
-                    packageName = resolveInfo.activityInfo.packageName,
-                    appName = resolveInfo.loadLabel(pm).toString(),
-                    icon = resolveInfo.loadIcon(pm)
+                    packageName = appInfo.packageName,
+                    appName = pm.getApplicationLabel(appInfo).toString(),
+                    icon = try { pm.getApplicationIcon(appInfo) } catch (e: Exception) { null }
                 )
             }
-            .distinctBy { it.packageName }
             .sortedBy { it.appName.lowercase() }
     }
 }
