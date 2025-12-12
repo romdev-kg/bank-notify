@@ -210,23 +210,33 @@
                     android:textSize="18sp"
                     android:textStyle="bold"
                     android:textColor="@color/textPrimary"
+                    android:layout_marginBottom="8dp" />
+
+                <TextView
+                    android:id="@+id/tv_banks_hint"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Установленные банковские приложения"
+                    android:textSize="14sp"
+                    android:textColor="@color/textSecondary"
                     android:layout_marginBottom="16dp" />
 
-                <com.google.android.material.checkbox.MaterialCheckBox
-                    android:id="@+id/cb_sberbank"
+                <LinearLayout
+                    android:id="@+id/banks_container"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Сбербанк"
-                    android:textSize="16sp"
-                    android:checked="true" />
+                    android:orientation="vertical" />
 
-                <com.google.android.material.checkbox.MaterialCheckBox
-                    android:id="@+id/cb_rshb"
+                <TextView
+                    android:id="@+id/tv_no_banks"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Россельхозбанк"
-                    android:textSize="16sp"
-                    android:checked="true" />
+                    android:text="Банковские приложения не найдены"
+                    android:textSize="14sp"
+                    android:textColor="@color/textSecondary"
+                    android:gravity="center"
+                    android:visibility="gone"
+                    android:padding="16dp" />
 
             </LinearLayout>
 

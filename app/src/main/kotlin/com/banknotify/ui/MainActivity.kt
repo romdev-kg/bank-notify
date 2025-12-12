@@ -5,11 +5,13 @@ import android.os.Bundle
 import android.provider.Settings
 import android.view.View
 import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.banknotify.BankAppsManager
 import com.banknotify.R
 import com.banknotify.TelegramSender
 import com.banknotify.db.BankNotificationsDatabase
@@ -38,8 +40,8 @@ class MainActivity : AppCompatActivity() {
         val btnTest = findViewById<Button>(R.id.btn_test)
         val etToken = findViewById<TextInputEditText>(R.id.et_telegram_token)
         val etChatId = findViewById<TextInputEditText>(R.id.et_chat_id)
-        val cbSberbank = findViewById<MaterialCheckBox>(R.id.cb_sberbank)
-        val cbRshb = findViewById<MaterialCheckBox>(R.id.cb_rshb)
+        val banksContainer = findViewById<LinearLayout>(R.id.banks_container)
+        val tvNoBanks = findViewById<TextView>(R.id.tv_no_banks)
 
         val prefs = EncryptedSharedPreferences.create(
             this,
@@ -68,16 +70,24 @@ class MainActivity : AppCompatActivity() {
             etChatId.setText(savedChatId)
         }
 
-        // Загружаем настройки банков
-        cbSberbank.isChecked = prefs.getBoolean("bank_sberbank", true)
-        cbRshb.isChecked = prefs.getBoolean("bank_rshb", true)
+        // Загружаем установленные банковские приложения
+        val installedBanks = BankAppsManager.getInstalledBanks(this)
 
-        // Сохраняем при изменении чекбоксов
-        cbSberbank.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean("bank_sberbank", isChecked).apply()
-        }
-        cbRshb.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean("bank_rshb", isChecked).apply()
+        if (installedBanks.isEmpty()) {
+            tvNoBanks.visibility = View.VISIBLE
+        } else {
+            tvNoBanks.visibility = View.GONE
+            for (bank in installedBanks) {
+                val checkBox = MaterialCheckBox(this).apply {
+                    text = bank.displayName
+                    textSize = 16f
+                    isChecked = prefs.getBoolean(bank.prefKey, true)
+                    setOnCheckedChangeListener { _, isChecked ->
+                        prefs.edit().putBoolean(bank.prefKey, isChecked).apply()
+                    }
+                }
+                banksContainer.addView(checkBox)
+            }
         }
 
         updateStatus(tvStatus, statusIndicator)

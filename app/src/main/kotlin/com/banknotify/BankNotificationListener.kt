@@ -22,12 +22,6 @@ class BankNotificationListener : NotificationListenerService() {
     companion object {
         private const val TAG = "BankNotifyListener"
 
-        // Сбербанк
-        private const val SBER_PACKAGE = "ru.sberbankmobile"
-
-        // Россельхозбанк
-        private const val RSHB_PACKAGE = "ru.rshb.dbo"
-
         // Ключевые слова для зачислений
         private val INCOME_KEYWORDS = listOf(
             "зачисление", "поступление", "перевод от", "получен перевод",
@@ -63,18 +57,10 @@ class BankNotificationListener : NotificationListenerService() {
 
         val packageName = sbn.packageName
 
-        // Проверяем включён ли банк в настройках
-        val bankName = when (packageName) {
-            SBER_PACKAGE -> {
-                if (!prefs.getBoolean("bank_sberbank", true)) return
-                "Сбербанк"
-            }
-            RSHB_PACKAGE -> {
-                if (!prefs.getBoolean("bank_rshb", true)) return
-                "Россельхозбанк"
-            }
-            else -> return
-        }
+        // Проверяем есть ли банк в списке поддерживаемых и включён ли он
+        val bank = BankAppsManager.getBankByPackage(packageName) ?: return
+        if (!prefs.getBoolean(bank.prefKey, true)) return
+        val bankName = bank.displayName
 
         val notification = sbn.notification
         val extras = notification.extras
