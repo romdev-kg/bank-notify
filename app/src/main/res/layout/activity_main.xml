@@ -189,7 +189,7 @@
 
         </androidx.cardview.widget.CardView>
 
-        <!-- Banks Card -->
+        <!-- Apps Card -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -206,7 +206,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Банки"
+                    android:text="Приложения"
                     android:textSize="18sp"
                     android:textStyle="bold"
                     android:textColor="@color/textPrimary"
@@ -216,27 +216,37 @@
                     android:id="@+id/tv_banks_hint"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Установленные банковские приложения"
+                    android:text="Выберите приложения для отслеживания"
                     android:textSize="14sp"
                     android:textColor="@color/textSecondary"
                     android:layout_marginBottom="16dp" />
 
                 <LinearLayout
-                    android:id="@+id/banks_container"
+                    android:id="@+id/apps_container"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical" />
 
                 <TextView
-                    android:id="@+id/tv_no_banks"
+                    android:id="@+id/tv_no_apps"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Банковские приложения не найдены"
+                    android:text="Нет выбранных приложений"
                     android:textSize="14sp"
                     android:textColor="@color/textSecondary"
                     android:gravity="center"
-                    android:visibility="gone"
                     android:padding="16dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_add_app"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Добавить приложение"
+                    app:cornerRadius="12dp"
+                    app:strokeColor="@color/colorPrimary"
+                    android:textColor="@color/colorPrimary"
+                    android:layout_marginTop="8dp" />
 
             </LinearLayout>
 

@@ -3,8 +3,10 @@ package com.banknotify.ui
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
+import android.view.LayoutInflater
 import android.view.View
 import android.widget.Button
+import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -27,6 +29,8 @@ import kotlinx.coroutines.withContext
 class MainActivity : AppCompatActivity() {
 
     private val scope = CoroutineScope(Dispatchers.Main + Job())
+    private lateinit var appsContainer: LinearLayout
+    private lateinit var tvNoApps: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,8 +44,9 @@ class MainActivity : AppCompatActivity() {
         val btnTest = findViewById<Button>(R.id.btn_test)
         val etToken = findViewById<TextInputEditText>(R.id.et_telegram_token)
         val etChatId = findViewById<TextInputEditText>(R.id.et_chat_id)
-        val banksContainer = findViewById<LinearLayout>(R.id.banks_container)
-        val tvNoBanks = findViewById<TextView>(R.id.tv_no_banks)
+        val btnAddApp = findViewById<Button>(R.id.btn_add_app)
+        appsContainer = findViewById(R.id.apps_container)
+        tvNoApps = findViewById(R.id.tv_no_apps)
 
         val prefs = EncryptedSharedPreferences.create(
             this,
@@ -70,24 +75,15 @@ class MainActivity : AppCompatActivity() {
             etChatId.setText(savedChatId)
         }
 
-        // Загружаем установленные банковские приложения
-        val installedBanks = BankAppsManager.getInstalledBanks(this)
+        // Загружаем выбранные приложения
+        refreshAppsList()
 
-        if (installedBanks.isEmpty()) {
-            tvNoBanks.visibility = View.VISIBLE
-        } else {
-            tvNoBanks.visibility = View.GONE
-            for (bank in installedBanks) {
-                val checkBox = MaterialCheckBox(this).apply {
-                    text = bank.displayName
-                    textSize = 16f
-                    isChecked = prefs.getBoolean(bank.prefKey, true)
-                    setOnCheckedChangeListener { _, isChecked ->
-                        prefs.edit().putBoolean(bank.prefKey, isChecked).apply()
-                    }
-                }
-                banksContainer.addView(checkBox)
-            }
+        // Кнопка добавления приложения
+        btnAddApp.setOnClickListener {
+            AppPickerDialog(this) { app ->
+                BankAppsManager.addApp(this, app.packageName)
+                refreshAppsList()
+            }.show()
         }
 
         updateStatus(tvStatus, statusIndicator)
@@ -139,6 +135,39 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     Toast.makeText(this@MainActivity, "Ошибка отправки. Проверьте токен и Chat ID", Toast.LENGTH_SHORT).show()
                 }
+            }
+        }
+    }
+
+    private fun refreshAppsList() {
+        appsContainer.removeAllViews()
+        val selectedApps = BankAppsManager.getSelectedApps(this)
+
+        if (selectedApps.isEmpty()) {
+            tvNoApps.visibility = View.VISIBLE
+        } else {
+            tvNoApps.visibility = View.GONE
+            for (app in selectedApps) {
+                val itemView = LayoutInflater.from(this)
+                    .inflate(R.layout.item_selected_app, appsContainer, false)
+
+                val cbEnabled = itemView.findViewById<MaterialCheckBox>(R.id.cb_app_enabled)
+                val tvAppName = itemView.findViewById<TextView>(R.id.tv_app_name)
+                val btnRemove = itemView.findViewById<ImageButton>(R.id.btn_remove)
+
+                tvAppName.text = app.displayName
+                cbEnabled.isChecked = BankAppsManager.isAppEnabled(this, app.packageName)
+
+                cbEnabled.setOnCheckedChangeListener { _, isChecked ->
+                    BankAppsManager.setAppEnabled(this, app.packageName, isChecked)
+                }
+
+                btnRemove.setOnClickListener {
+                    BankAppsManager.removeApp(this, app.packageName)
+                    refreshAppsList()
+                }
+
+                appsContainer.addView(itemView)
             }
         }
     }

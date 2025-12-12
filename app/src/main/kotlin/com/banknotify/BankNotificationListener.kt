@@ -57,10 +57,9 @@ class BankNotificationListener : NotificationListenerService() {
 
         val packageName = sbn.packageName
 
-        // Проверяем есть ли банк в списке поддерживаемых и включён ли он
-        val bank = BankAppsManager.getBankByPackage(packageName) ?: return
-        if (!prefs.getBoolean(bank.prefKey, true)) return
-        val bankName = bank.displayName
+        // Проверяем есть ли приложение в списке отслеживаемых и включено ли оно
+        if (!BankAppsManager.isAppTracked(applicationContext, packageName)) return
+        if (!BankAppsManager.isAppEnabled(applicationContext, packageName)) return
 
         val notification = sbn.notification
         val extras = notification.extras
@@ -69,7 +68,16 @@ class BankNotificationListener : NotificationListenerService() {
         val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: ""
         val fullText = "$title $text".lowercase()
 
-        Log.d(TAG, "Bank notification from $bankName: $title - $text")
+        // Получаем имя приложения
+        val appName = try {
+            val pm = applicationContext.packageManager
+            val appInfo = pm.getApplicationInfo(packageName, 0)
+            pm.getApplicationLabel(appInfo).toString()
+        } catch (e: Exception) {
+            packageName
+        }
+
+        Log.d(TAG, "Notification from $appName: $title - $text")
 
         // Проверяем что это зачисление
         val isIncome = INCOME_KEYWORDS.any { keyword -> fullText.contains(keyword) }
@@ -90,7 +98,7 @@ class BankNotificationListener : NotificationListenerService() {
                 val message = "$amount рублей"
 
                 telegramSender.sendSimple(message)
-                Log.d(TAG, "Income notification forwarded: $amount from $bankName")
+                Log.d(TAG, "Income notification forwarded: $amount from $appName")
             } catch (e: Exception) {
                 Log.e(TAG, "Error forwarding notification", e)
             }
