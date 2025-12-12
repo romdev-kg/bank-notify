@@ -23,9 +23,9 @@ class TelegramSender(
 ) {
 
     companion object {
-        // Дефолтные значения - можно изменить в приложении
-        const val DEFAULT_TOKEN = "8586959260:AAHNmCun_o_P4QJaC0mK3nG5LisL_K_gsPg"
-        const val DEFAULT_CHAT_ID = "-1003459500291"
+        // Пустые значения по умолчанию - пользователь должен ввести свои
+        const val DEFAULT_TOKEN = ""
+        const val DEFAULT_CHAT_ID = ""
     }
 
     private val prefs = EncryptedSharedPreferences.create(

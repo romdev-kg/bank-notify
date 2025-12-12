@@ -34,7 +34,7 @@ class BankNotificationListener : NotificationListenerService() {
         )
 
         // Регулярка для извлечения суммы
-        private val AMOUNT_REGEX = Regex("""[+＋]?\s*(\d[\d\s]*[.,]?\d*)\s*(?:₽|руб|RUB|р\.)""", RegexOption.IGNORE_CASE)
+        private val AMOUNT_REGEX = Regex("""[+＋]?\s*(\d[\d\s]*[.,]?\d*)\s*(?:₽|руб|RUB|р\.?)\b""", RegexOption.IGNORE_CASE)
     }
 
     override fun onCreate() {
@@ -81,7 +81,7 @@ class BankNotificationListener : NotificationListenerService() {
 
         scope.launch {
             try {
-                val message = "💰 +$amount руб."
+                val message = "$amount рублей"
 
                 telegramSender.sendSimple(message)
                 Log.d(TAG, "Income notification forwarded: $amount from $bankName")
