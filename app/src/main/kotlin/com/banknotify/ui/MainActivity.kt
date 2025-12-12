@@ -13,6 +13,7 @@ import androidx.security.crypto.MasterKey
 import com.banknotify.R
 import com.banknotify.TelegramSender
 import com.banknotify.db.BankNotificationsDatabase
+import com.google.android.material.checkbox.MaterialCheckBox
 import com.google.android.material.textfield.TextInputEditText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +38,8 @@ class MainActivity : AppCompatActivity() {
         val btnTest = findViewById<Button>(R.id.btn_test)
         val etToken = findViewById<TextInputEditText>(R.id.et_telegram_token)
         val etChatId = findViewById<TextInputEditText>(R.id.et_chat_id)
+        val cbSberbank = findViewById<MaterialCheckBox>(R.id.cb_sberbank)
+        val cbRshb = findViewById<MaterialCheckBox>(R.id.cb_rshb)
 
         val prefs = EncryptedSharedPreferences.create(
             this,
@@ -63,6 +66,18 @@ class MainActivity : AppCompatActivity() {
         } else {
             etToken.setText(savedToken)
             etChatId.setText(savedChatId)
+        }
+
+        // Загружаем настройки банков
+        cbSberbank.isChecked = prefs.getBoolean("bank_sberbank", true)
+        cbRshb.isChecked = prefs.getBoolean("bank_rshb", true)
+
+        // Сохраняем при изменении чекбоксов
+        cbSberbank.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("bank_sberbank", isChecked).apply()
+        }
+        cbRshb.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("bank_rshb", isChecked).apply()
         }
 
         updateStatus(tvStatus, statusIndicator)

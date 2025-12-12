@@ -4,6 +4,8 @@ import android.app.Notification
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import com.banknotify.db.BankNotificationsDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +39,18 @@ class BankNotificationListener : NotificationListenerService() {
         private val AMOUNT_REGEX = Regex("""[+＋]?\s*(\d[\d\s]*[.,]?\d*)\s*(?:₽|руб|RUB|р\.?)\b""", RegexOption.IGNORE_CASE)
     }
 
+    private val prefs by lazy {
+        EncryptedSharedPreferences.create(
+            applicationContext,
+            "bank_notify",
+            MasterKey.Builder(applicationContext)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build(),
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    }
+
     override fun onCreate() {
         super.onCreate()
         database = BankNotificationsDatabase.getDatabase(applicationContext)
@@ -49,10 +63,16 @@ class BankNotificationListener : NotificationListenerService() {
 
         val packageName = sbn.packageName
 
-        // Только Сбербанк и Россельхозбанк
+        // Проверяем включён ли банк в настройках
         val bankName = when (packageName) {
-            SBER_PACKAGE -> "Сбербанк"
-            RSHB_PACKAGE -> "Россельхозбанк"
+            SBER_PACKAGE -> {
+                if (!prefs.getBoolean("bank_sberbank", true)) return
+                "Сбербанк"
+            }
+            RSHB_PACKAGE -> {
+                if (!prefs.getBoolean("bank_rshb", true)) return
+                "Россельхозбанк"
+            }
             else -> return
         }
 
