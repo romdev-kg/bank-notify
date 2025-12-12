@@ -30,7 +30,7 @@ class BankNotificationListener : NotificationListenerService() {
         )
 
         // Регулярка для извлечения суммы
-        private val AMOUNT_REGEX = Regex("""[+＋]?\s*(\d[\d\s]*[.,]?\d*)\s*(?:₽|руб|RUB|р\.?)\b""", RegexOption.IGNORE_CASE)
+        private val AMOUNT_REGEX = Regex("""[+＋]?\s*(\d[\d\s]*[.,]?\d*)\s*(?:₽|руб|RUB|р)(?:\s|$|\.)""", RegexOption.IGNORE_CASE)
     }
 
     private val prefs by lazy {
