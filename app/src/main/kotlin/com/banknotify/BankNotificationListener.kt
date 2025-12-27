@@ -26,8 +26,17 @@ class BankNotificationListener : NotificationListenerService() {
             "начисление", "зачислено", "поступило", "+", "получено"
         )
 
-        // Регулярка для извлечения суммы
-        private val AMOUNT_REGEX = Regex("""[+＋]?\s*(\d[\d\s]*[.,]?\d*)\s*(?:₽|руб|RUB|р)(?:\s|$|\.)""", RegexOption.IGNORE_CASE)
+        // Регулярки для извлечения суммы (несколько паттернов для разных банков)
+        private val AMOUNT_PATTERNS = listOf(
+            // Стандартный: 1000 ₽, 1 000,50 руб, +500 RUB
+            Regex("""[+＋]?\s*(\d[\d\s]*[.,]?\d*)\s*(?:₽|руб\.?|RUB|р\.?)""", RegexOption.IGNORE_CASE),
+            // Валюта перед суммой: ₽1000, руб. 500
+            Regex("""(?:₽|руб\.?|RUB|р\.?)\s*[+＋]?\s*(\d[\d\s]*[.,]?\d*)""", RegexOption.IGNORE_CASE),
+            // Сумма с "сумма": сумма 1000, сумма: 500.00
+            Regex("""сумм[аы]:?\s*[+＋]?\s*(\d[\d\s]*[.,]?\d*)""", RegexOption.IGNORE_CASE),
+            // Просто число с плюсом в начале: +1000
+            Regex("""[+＋]\s*(\d[\d\s]*[.,]?\d*)""")
+        )
 
         // Регулярки для извлечения отправителя
         private val SENDER_PATTERNS = listOf(
@@ -128,23 +137,33 @@ class BankNotificationListener : NotificationListenerService() {
     }
 
     private fun extractAmount(text: String): String? {
-        val match = AMOUNT_REGEX.find(text) ?: return null
-        val rawAmount = match.groupValues[1]
-            .replace(" ", "")
-            .replace(",", ".")
-            .trim()
+        // Пробуем все паттерны по очереди
+        for (pattern in AMOUNT_PATTERNS) {
+            val match = pattern.find(text)
+            if (match != null) {
+                val rawAmount = match.groupValues[1]
+                    .replace(" ", "")
+                    .replace(",", ".")
+                    .replace("\\s".toRegex(), "")
+                    .trim()
 
-        // Форматируем сумму
-        return try {
-            val number = rawAmount.toDouble()
-            if (number == number.toLong().toDouble()) {
-                number.toLong().toString()
-            } else {
-                String.format("%.2f", number)
+                if (rawAmount.isEmpty()) continue
+
+                // Форматируем сумму
+                return try {
+                    val number = rawAmount.toDouble()
+                    if (number <= 0) continue // Пропускаем нулевые и отрицательные
+                    if (number == number.toLong().toDouble()) {
+                        number.toLong().toString()
+                    } else {
+                        String.format("%.2f", number)
+                    }
+                } catch (e: NumberFormatException) {
+                    continue
+                }
             }
-        } catch (e: NumberFormatException) {
-            rawAmount
         }
+        return null
     }
 
     private fun extractSender(text: String): String? {
