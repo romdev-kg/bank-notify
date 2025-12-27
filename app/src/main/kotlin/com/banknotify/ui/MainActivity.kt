@@ -13,6 +13,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.banknotify.AppLog
 import com.banknotify.BankAppsManager
 import com.banknotify.R
 import com.banknotify.TelegramSender
@@ -95,6 +96,13 @@ class MainActivity : AppCompatActivity() {
         btnPermissions.setOnClickListener {
             startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
         }
+
+        val btnLogs = findViewById<Button>(R.id.btn_logs)
+        btnLogs.setOnClickListener {
+            startActivity(Intent(this, LogsActivity::class.java))
+        }
+
+        AppLog.i("MainActivity", "Приложение запущено")
 
         btnSave.setOnClickListener {
             val token = etToken.text.toString().trim()

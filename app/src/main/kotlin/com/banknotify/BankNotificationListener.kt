@@ -3,9 +3,6 @@ package com.banknotify
 import android.app.Notification
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
-import android.util.Log
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 import com.banknotify.db.BankNotificationsDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -20,7 +17,7 @@ class BankNotificationListener : NotificationListenerService() {
     private lateinit var telegramSender: TelegramSender
 
     companion object {
-        private const val TAG = "BankNotifyListener"
+        private const val TAG = "Listener"
 
         // Ключевые слова для зачислений
         private val INCOME_KEYWORDS = listOf(
@@ -43,23 +40,11 @@ class BankNotificationListener : NotificationListenerService() {
         )
     }
 
-    private val prefs by lazy {
-        EncryptedSharedPreferences.create(
-            applicationContext,
-            "bank_notify",
-            MasterKey.Builder(applicationContext)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build(),
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
-    }
-
     override fun onCreate() {
         super.onCreate()
         database = BankNotificationsDatabase.getDatabase(applicationContext)
         telegramSender = TelegramSender(applicationContext, database.notificationDao())
-        Log.d(TAG, "BankNotificationListener created")
+        AppLog.i(TAG, "Сервис запущен")
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
@@ -68,8 +53,14 @@ class BankNotificationListener : NotificationListenerService() {
         val packageName = sbn.packageName
 
         // Проверяем есть ли приложение в списке отслеживаемых и включено ли оно
-        if (!BankAppsManager.isAppTracked(applicationContext, packageName)) return
-        if (!BankAppsManager.isAppEnabled(applicationContext, packageName)) return
+        if (!BankAppsManager.isAppTracked(applicationContext, packageName)) {
+            AppLog.d(TAG, "Пропуск: $packageName не в списке")
+            return
+        }
+        if (!BankAppsManager.isAppEnabled(applicationContext, packageName)) {
+            AppLog.d(TAG, "Пропуск: $packageName отключено")
+            return
+        }
 
         val notification = sbn.notification
         val extras = notification.extras
@@ -87,24 +78,26 @@ class BankNotificationListener : NotificationListenerService() {
             packageName
         }
 
-        Log.d(TAG, "Notification from $appName: $title - $text")
+        AppLog.d(TAG, "Уведомление от $appName: $title | $text")
 
         // Проверяем что это зачисление
         val isIncome = INCOME_KEYWORDS.any { keyword -> fullText.contains(keyword) }
         if (!isIncome) {
-            Log.d(TAG, "Skipping non-income notification")
+            AppLog.d(TAG, "Пропуск: не про деньги")
             return
         }
 
         // Извлекаем сумму
         val amount = extractAmount(fullText)
         if (amount == null) {
-            Log.d(TAG, "Could not extract amount from: $fullText")
+            AppLog.w(TAG, "Не удалось извлечь сумму из: $fullText")
             return
         }
 
         // Извлекаем отправителя
         val sender = extractSender(fullText)
+
+        AppLog.i(TAG, "Найдено: $amount руб. от ${sender ?: "неизвестно"} ($appName)")
 
         scope.launch {
             try {
@@ -117,9 +110,9 @@ class BankNotificationListener : NotificationListenerService() {
                 }
 
                 telegramSender.sendSimple(message)
-                Log.d(TAG, "Income notification forwarded: $amount from $appName, sender: $sender")
+                AppLog.i(TAG, "Отправлено в Telegram: $message")
             } catch (e: Exception) {
-                Log.e(TAG, "Error forwarding notification", e)
+                AppLog.e(TAG, "Ошибка отправки в Telegram", e)
             }
         }
     }
@@ -131,7 +124,7 @@ class BankNotificationListener : NotificationListenerService() {
     override fun onDestroy() {
         super.onDestroy()
         scope.cancel()
-        Log.d(TAG, "BankNotificationListener destroyed")
+        AppLog.i(TAG, "Сервис остановлен")
     }
 
     private fun extractAmount(text: String): String? {
