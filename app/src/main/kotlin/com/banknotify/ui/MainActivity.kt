@@ -1,8 +1,11 @@
 package com.banknotify.ui
 
+import android.content.ComponentName
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.service.notification.NotificationListenerService
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.Button
@@ -15,6 +18,7 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.banknotify.AppLog
 import com.banknotify.BankAppsManager
+import com.banknotify.BankNotificationListener
 import com.banknotify.R
 import com.banknotify.TelegramSender
 import com.banknotify.db.BankNotificationsDatabase
@@ -103,6 +107,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         AppLog.i("MainActivity", "Приложение запущено")
+        ensureListenerConnected()
 
         btnSave.setOnClickListener {
             val token = etToken.text.toString().trim()
@@ -185,6 +190,17 @@ class MainActivity : AppCompatActivity() {
         val tvStatus = findViewById<TextView>(R.id.tv_status)
         val statusIndicator = findViewById<View>(R.id.status_indicator)
         updateStatus(tvStatus, statusIndicator)
+        ensureListenerConnected()
+    }
+
+    private fun ensureListenerConnected() {
+        if (hasNotificationAccess() && !BankNotificationListener.isConnected) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                val cn = ComponentName(this, BankNotificationListener::class.java)
+                NotificationListenerService.requestRebind(cn)
+                AppLog.i("MainActivity", "Listener не подключён, вызван requestRebind()")
+            }
+        }
     }
 
     private fun updateStatus(tvStatus: TextView, statusIndicator: View) {

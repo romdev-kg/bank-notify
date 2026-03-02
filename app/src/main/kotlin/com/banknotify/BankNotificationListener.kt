@@ -1,6 +1,8 @@
 package com.banknotify
 
 import android.app.Notification
+import android.content.ComponentName
+import android.os.Build
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import com.banknotify.db.BankNotificationsDatabase
@@ -18,6 +20,9 @@ class BankNotificationListener : NotificationListenerService() {
 
     companion object {
         private const val TAG = "Listener"
+        @Volatile
+        var isConnected = false
+            private set
 
         // Ключевые слова для зачислений
         private val INCOME_KEYWORDS = listOf(
@@ -54,6 +59,22 @@ class BankNotificationListener : NotificationListenerService() {
         database = BankNotificationsDatabase.getDatabase(applicationContext)
         telegramSender = TelegramSender(applicationContext, database.notificationDao())
         AppLog.i(TAG, "Сервис запущен")
+    }
+
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        isConnected = true
+        AppLog.i(TAG, "Listener подключён к системе")
+    }
+
+    override fun onListenerDisconnected() {
+        super.onListenerDisconnected()
+        isConnected = false
+        AppLog.w(TAG, "Listener отключён от системы, запрашиваем rebind")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            val cn = ComponentName(applicationContext, BankNotificationListener::class.java)
+            requestRebind(cn)
+        }
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
