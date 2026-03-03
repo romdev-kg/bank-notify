@@ -21,11 +21,13 @@ android {
         create("release") {
             val props = rootProject.file("signing.properties")
             if (props.exists()) {
-                val signingProps = java.util.Properties().apply { load(props.inputStream()) }
-                storeFile = file(signingProps["storeFile"] as String)
-                storePassword = signingProps["storePassword"] as String
-                keyAlias = signingProps["keyAlias"] as String
-                keyPassword = signingProps["keyPassword"] as String
+                val signingProps = props.inputStream().use { input ->
+                    java.util.Properties().also { it.load(input) }
+                }
+                storeFile = file(signingProps.getProperty("storeFile"))
+                storePassword = signingProps.getProperty("storePassword")
+                keyAlias = signingProps.getProperty("keyAlias")
+                keyPassword = signingProps.getProperty("keyPassword")
             } else {
                 storeFile = file("banknotify-release.jks")
                 storePassword = System.getenv("KEYSTORE_PASSWORD")
