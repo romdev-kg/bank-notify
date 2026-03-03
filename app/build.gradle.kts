@@ -1,7 +1,16 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp") version "2.0.21-1.0.27"
+}
+
+val signingPropsFile = rootProject.file("signing.properties")
+val signingProps = Properties().apply {
+    if (signingPropsFile.exists()) {
+        signingPropsFile.inputStream().use { load(it) }
+    }
 }
 
 android {
@@ -19,11 +28,7 @@ android {
 
     signingConfigs {
         create("release") {
-            val props = rootProject.file("signing.properties")
-            if (props.exists()) {
-                val signingProps = props.inputStream().use { input ->
-                    java.util.Properties().also { it.load(input) }
-                }
+            if (signingPropsFile.exists()) {
                 storeFile = file(signingProps.getProperty("storeFile"))
                 storePassword = signingProps.getProperty("storePassword")
                 keyAlias = signingProps.getProperty("keyAlias")
