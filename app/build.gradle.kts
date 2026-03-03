@@ -12,9 +12,27 @@ android {
         applicationId = "com.banknotify"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        create("release") {
+            val props = rootProject.file("signing.properties")
+            if (props.exists()) {
+                val signingProps = java.util.Properties().apply { load(props.inputStream()) }
+                storeFile = file(signingProps["storeFile"] as String)
+                storePassword = signingProps["storePassword"] as String
+                keyAlias = signingProps["keyAlias"] as String
+                keyPassword = signingProps["keyPassword"] as String
+            } else {
+                storeFile = file("banknotify-release.jks")
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -24,6 +42,7 @@ android {
         }
         release {
             isMinifyEnabled = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

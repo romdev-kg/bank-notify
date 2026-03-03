@@ -1,5 +1,16 @@
 # Changelog
 
+## [2026-03-03] Настройка release signing
+
+### Добавлено
+- Release signing конфигурация в `app/build.gradle.kts` (читает из `signing.properties` локально или env vars в CI)
+- Keystore файл `banknotify-release.jks` для подписи release APK
+- `signing.properties` для локальной сборки (в `.gitignore`)
+- Шаг decode keystore в GitHub Actions workflow
+
+### Изменено
+- `build.yml`: release APK теперь подписан (вместо `app-release-unsigned.apk` → `app-release.apk`)
+
 ## [2026-03-02] Автоматическое переподключение NotificationListener
 
 ### Исправлено
