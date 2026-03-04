@@ -126,8 +126,7 @@ object BankAppsManager {
         val pm = context.packageManager
         val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
             .filter { appInfo ->
-                (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) == 0 ||
-                (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+                (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) == 0
             }
             .map { appInfo ->
                 InstalledApp(
