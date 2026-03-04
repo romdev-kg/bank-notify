@@ -13,7 +13,29 @@
         android:textSize="18sp"
         android:textStyle="bold"
         android:textColor="@color/textPrimary"
-        android:layout_marginBottom="16dp" />
+        android:layout_marginBottom="12dp" />
+
+    <EditText
+        android:id="@+id/et_search"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Поиск..."
+        android:inputType="text"
+        android:textSize="14sp"
+        android:padding="12dp"
+        android:background="@drawable/search_background"
+        android:layout_marginBottom="12dp"
+        android:visibility="gone" />
+
+    <Button
+        android:id="@+id/btn_refresh_apps"
+        style="@style/Widget.MaterialComponents.Button.TextButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Обновить список"
+        android:textColor="@color/colorPrimary"
+        android:layout_gravity="end"
+        android:visibility="gone" />
 
     <TextView
         android:id="@+id/tv_loading"

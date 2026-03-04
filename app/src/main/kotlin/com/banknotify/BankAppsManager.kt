@@ -23,6 +23,7 @@ data class InstalledApp(
 object BankAppsManager {
 
     private const val CUSTOM_APPS_KEY = "custom_apps"
+    private var cachedApps: List<InstalledApp>? = null
 
     private fun getPrefs(context: Context): SharedPreferences {
         return EncryptedSharedPreferences.create(
@@ -120,11 +121,11 @@ object BankAppsManager {
      * Возвращает список всех установленных приложений (не системных)
      */
     fun getAllInstalledApps(context: Context): List<InstalledApp> {
-        val pm = context.packageManager
+        cachedApps?.let { return it }
 
-        return pm.getInstalledApplications(PackageManager.GET_META_DATA)
+        val pm = context.packageManager
+        val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
             .filter { appInfo ->
-                // Исключаем системные приложения без обновлений
                 (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) == 0 ||
                 (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
             }
@@ -136,5 +137,12 @@ object BankAppsManager {
                 )
             }
             .sortedBy { it.appName.lowercase() }
+
+        cachedApps = apps
+        return apps
+    }
+
+    fun invalidateCache() {
+        cachedApps = null
     }
 }
