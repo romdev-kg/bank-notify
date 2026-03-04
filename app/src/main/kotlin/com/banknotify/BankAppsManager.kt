@@ -141,6 +141,8 @@ object BankAppsManager {
         return apps
     }
 
+    fun hasCachedApps(): Boolean = cachedApps != null
+
     fun invalidateCache() {
         cachedApps = null
     }

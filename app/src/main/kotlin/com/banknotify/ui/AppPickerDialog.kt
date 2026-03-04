@@ -60,31 +60,48 @@ class AppPickerDialog(
         etSearch: EditText,
         btnRefresh: Button
     ) {
-        Thread {
-            val apps = BankAppsManager.getAllInstalledApps(context)
-                .filter { !BankAppsManager.isAppTracked(context, it.packageName) }
-
-            recyclerView.post {
-                tvLoading.visibility = View.GONE
-                etSearch.visibility = View.VISIBLE
-                btnRefresh.visibility = View.VISIBLE
-                recyclerView.visibility = View.VISIBLE
-
-                val adapter = AppsAdapter(apps) { app ->
-                    onAppSelected(app)
-                    dismiss()
+        if (BankAppsManager.hasCachedApps()) {
+            showApps(
+                BankAppsManager.getAllInstalledApps(context)
+                    .filter { !BankAppsManager.isAppTracked(context, it.packageName) },
+                recyclerView, tvLoading, etSearch, btnRefresh
+            )
+        } else {
+            Thread {
+                val apps = BankAppsManager.getAllInstalledApps(context)
+                    .filter { !BankAppsManager.isAppTracked(context, it.packageName) }
+                recyclerView.post {
+                    showApps(apps, recyclerView, tvLoading, etSearch, btnRefresh)
                 }
-                recyclerView.adapter = adapter
+            }.start()
+        }
+    }
 
-                etSearch.addTextChangedListener(object : TextWatcher {
-                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-                    override fun afterTextChanged(s: Editable?) {
-                        adapter.filter(s?.toString() ?: "")
-                    }
-                })
+    private fun showApps(
+        apps: List<InstalledApp>,
+        recyclerView: RecyclerView,
+        tvLoading: TextView,
+        etSearch: EditText,
+        btnRefresh: Button
+    ) {
+        tvLoading.visibility = View.GONE
+        etSearch.visibility = View.VISIBLE
+        btnRefresh.visibility = View.VISIBLE
+        recyclerView.visibility = View.VISIBLE
+
+        val adapter = AppsAdapter(apps) { app ->
+            onAppSelected(app)
+            dismiss()
+        }
+        recyclerView.adapter = adapter
+
+        etSearch.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                adapter.filter(s?.toString() ?: "")
             }
-        }.start()
+        })
     }
 
     private class AppsAdapter(
