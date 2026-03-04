@@ -1,3 +1,6 @@
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.Properties
 
 plugins {
@@ -21,9 +24,13 @@ android {
         applicationId = "com.banknotify"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "1.4.1"
+        versionCode = 7
+        versionName = "1.5.0"
+        setProperty("archivesBaseName", "BankNotify-${versionName}")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        val buildDate = SimpleDateFormat("dd.MM.yyyy", Locale("ru")).format(Date())
+        buildConfigField("String", "BUILD_DATE", "\"$buildDate\"")
     }
 
     signingConfigs {
@@ -74,6 +81,7 @@ android {
 
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 }
 

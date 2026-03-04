@@ -392,9 +392,9 @@
 
         <!-- Info -->
         <TextView
+            android:id="@+id/tv_version"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="v1.4.1"
             android:textSize="12sp"
             android:textColor="@color/textSecondary"
             android:gravity="center"

@@ -24,9 +24,11 @@ object BankAppsManager {
 
     private const val CUSTOM_APPS_KEY = "custom_apps"
     private var cachedApps: List<InstalledApp>? = null
+    private var cachedPrefs: SharedPreferences? = null
 
     private fun getPrefs(context: Context): SharedPreferences {
-        return EncryptedSharedPreferences.create(
+        cachedPrefs?.let { return it }
+        val prefs = EncryptedSharedPreferences.create(
             context,
             "bank_notify",
             MasterKey.Builder(context)
@@ -35,6 +37,8 @@ object BankAppsManager {
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
+        cachedPrefs = prefs
+        return prefs
     }
 
     /**

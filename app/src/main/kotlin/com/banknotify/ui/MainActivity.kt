@@ -23,6 +23,7 @@ import androidx.security.crypto.MasterKey
 import com.banknotify.AppLog
 import com.banknotify.BankAppsManager
 import com.banknotify.BankNotificationListener
+import com.banknotify.BuildConfig
 import com.banknotify.R
 import com.banknotify.TelegramSender
 import com.banknotify.db.BankNotificationsDatabase
@@ -142,6 +143,8 @@ class MainActivity : AppCompatActivity() {
         btnLogs.setOnClickListener {
             startActivity(Intent(this, LogsActivity::class.java))
         }
+
+        findViewById<TextView>(R.id.tv_version).text = "v${BuildConfig.VERSION_NAME} (${BuildConfig.BUILD_DATE})"
 
         AppLog.i("MainActivity", "Приложение запущено")
         ensureListenerConnected()
