@@ -1,7 +1,9 @@
 package com.banknotify.ui
 
+import android.Manifest
 import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -13,7 +15,9 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.banknotify.AppLog
@@ -23,6 +27,7 @@ import com.banknotify.R
 import com.banknotify.TelegramSender
 import com.banknotify.db.BankNotificationsDatabase
 import com.google.android.material.checkbox.MaterialCheckBox
+import com.google.android.material.switchmaterial.SwitchMaterial
 import com.google.android.material.textfield.TextInputEditText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +41,20 @@ class MainActivity : AppCompatActivity() {
     private val scope = CoroutineScope(Dispatchers.Main + Job())
     private lateinit var appsContainer: LinearLayout
     private lateinit var tvNoApps: TextView
+    private lateinit var switchSms: SwitchMaterial
+
+    private val smsPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            setSmsEnabled(true)
+            switchSms.isChecked = true
+            AppLog.i("MainActivity", "SMS разрешение получено")
+        } else {
+            AppLog.w("MainActivity", "SMS разрешение отклонено")
+            Toast.makeText(this, "SMS разрешение отклонено", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -89,6 +108,24 @@ class MainActivity : AppCompatActivity() {
                 BankAppsManager.addApp(this, app.packageName)
                 refreshAppsList()
             }.show()
+        }
+
+        // SMS toggle
+        switchSms = findViewById(R.id.switch_sms)
+        switchSms.isChecked = isSmsEnabled()
+        switchSms.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) {
+                if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECEIVE_SMS)
+                    == PackageManager.PERMISSION_GRANTED
+                ) {
+                    setSmsEnabled(true)
+                } else {
+                    switchSms.isChecked = false
+                    smsPermissionLauncher.launch(Manifest.permission.RECEIVE_SMS)
+                }
+            } else {
+                setSmsEnabled(false)
+            }
         }
 
         updateStatus(tvStatus, statusIndicator)
@@ -191,6 +228,9 @@ class MainActivity : AppCompatActivity() {
         val statusIndicator = findViewById<View>(R.id.status_indicator)
         updateStatus(tvStatus, statusIndicator)
         ensureListenerConnected()
+        // Обновить состояние SMS switch (разрешение могло измениться в настройках)
+        val hasPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
+        switchSms.isChecked = hasPermission && isSmsEnabled()
     }
 
     private fun ensureListenerConnected() {
@@ -219,6 +259,26 @@ class MainActivity : AppCompatActivity() {
             "enabled_notification_listeners"
         )
         return enabledListeners?.contains(packageName) == true
+    }
+
+    private fun isSmsEnabled(): Boolean {
+        val prefs = EncryptedSharedPreferences.create(
+            this, "bank_notify",
+            MasterKey.Builder(this).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+        return prefs.getBoolean("sms_enabled", false)
+    }
+
+    private fun setSmsEnabled(enabled: Boolean) {
+        val prefs = EncryptedSharedPreferences.create(
+            this, "bank_notify",
+            MasterKey.Builder(this).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+        prefs.edit().putBoolean("sms_enabled", enabled).apply()
     }
 
     override fun onDestroy() {

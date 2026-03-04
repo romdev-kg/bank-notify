@@ -1,8 +1,6 @@
 package com.banknotify.ui
 
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.widget.Button
 import android.widget.ScrollView
 import android.widget.TextView
@@ -15,17 +13,6 @@ class LogsActivity : AppCompatActivity() {
 
     private lateinit var tvLogs: TextView
     private lateinit var scrollView: ScrollView
-    private val handler = Handler(Looper.getMainLooper())
-    private var autoRefresh = true
-
-    private val refreshRunnable = object : Runnable {
-        override fun run() {
-            if (autoRefresh) {
-                updateLogs()
-                handler.postDelayed(this, 2000)
-            }
-        }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -58,21 +45,11 @@ class LogsActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        autoRefresh = true
-        handler.post(refreshRunnable)
-    }
-
-    override fun onPause() {
-        super.onPause()
-        autoRefresh = false
-        handler.removeCallbacks(refreshRunnable)
+        updateLogs()
     }
 
     private fun updateLogs() {
         val logs = AppLog.getLogsAsText()
         tvLogs.text = if (logs.isNotEmpty()) logs else "Логи пусты. Дождитесь уведомлений."
-        scrollView.post {
-            scrollView.scrollTo(0, 0)
-        }
     }
 }

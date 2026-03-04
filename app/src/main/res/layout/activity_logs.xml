@@ -75,7 +75,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Авто-обновление каждые 2 сек"
+        android:text="Нажмите «Обновить» для загрузки новых логов"
         android:textSize="12sp"
         android:textColor="@color/textSecondary"
         android:gravity="center"
