@@ -6,6 +6,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.view.LayoutInflater
@@ -237,22 +239,52 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun ensureListenerConnected() {
-        if (hasNotificationAccess() && !BankNotificationListener.isConnected) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                val cn = ComponentName(this, BankNotificationListener::class.java)
-                NotificationListenerService.requestRebind(cn)
-                AppLog.i("MainActivity", "Listener не подключён, вызван requestRebind()")
-            }
+        if (!hasNotificationAccess() || BankNotificationListener.isConnected) return
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            val cn = ComponentName(this, BankNotificationListener::class.java)
+            NotificationListenerService.requestRebind(cn)
+            AppLog.i("MainActivity", "Listener не подключён, вызван requestRebind()")
+
+            // Через 3 сек — toggle компонента если не подключился
+            Handler(Looper.getMainLooper()).postDelayed({
+                if (!BankNotificationListener.isConnected && hasNotificationAccess()) {
+                    AppLog.i("MainActivity", "Toggle компонента для принудительного rebind")
+                    try {
+                        val pm = packageManager
+                        pm.setComponentEnabledSetting(
+                            cn,
+                            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                            PackageManager.DONT_KILL_APP
+                        )
+                        pm.setComponentEnabledSetting(
+                            cn,
+                            PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                            PackageManager.DONT_KILL_APP
+                        )
+                        NotificationListenerService.requestRebind(cn)
+                    } catch (e: Exception) {
+                        AppLog.e("MainActivity", "Toggle failed: ${e.message}")
+                    }
+                }
+            }, 3000)
         }
     }
 
     private fun updateStatus(tvStatus: TextView, statusIndicator: View) {
-        if (hasNotificationAccess()) {
-            tvStatus.text = "Активен"
-            statusIndicator.setBackgroundResource(R.drawable.status_indicator_on)
-        } else {
-            tvStatus.text = "Не активен"
-            statusIndicator.setBackgroundResource(R.drawable.status_indicator_off)
+        when {
+            !hasNotificationAccess() -> {
+                tvStatus.text = "Нет разрешения"
+                statusIndicator.setBackgroundResource(R.drawable.status_indicator_off)
+            }
+            BankNotificationListener.isConnected -> {
+                tvStatus.text = "Активен"
+                statusIndicator.setBackgroundResource(R.drawable.status_indicator_on)
+            }
+            else -> {
+                tvStatus.text = "Подключение..."
+                statusIndicator.setBackgroundResource(R.drawable.status_indicator_off)
+            }
         }
     }
 
