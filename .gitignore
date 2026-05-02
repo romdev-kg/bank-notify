@@ -35,3 +35,6 @@ proguard/
 *.jks
 *.keystore
 signing.properties
+
+# Claude Code local user config (personal allow paths)
+.claude/settings.local.json
