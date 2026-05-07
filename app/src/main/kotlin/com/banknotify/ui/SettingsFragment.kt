@@ -37,6 +37,7 @@ class SettingsFragment : Fragment() {
 
         val etToken = view.findViewById<EditText>(R.id.et_telegram_token)
         val etChatId = view.findViewById<EditText>(R.id.et_chat_id)
+        val etProxy = view.findViewById<EditText>(R.id.et_telegram_proxy)
         val btnSave = view.findViewById<Button>(R.id.btn_save_settings)
         val btnTest = view.findViewById<Button>(R.id.btn_test)
 
@@ -52,15 +53,18 @@ class SettingsFragment : Fragment() {
 
         etToken.setText(prefs.getString("telegram_token", ""))
         etChatId.setText(prefs.getString("telegram_chat_id", ""))
+        etProxy.setText(prefs.getString(TelegramSender.PREF_TELEGRAM_PROXY, ""))
 
         btnSave.setOnClickListener {
             val token = etToken.text.toString().trim()
             val chatId = etChatId.text.toString().trim()
+            val proxy = etProxy.text.toString().trim()
 
             if (token.isNotEmpty() && chatId.isNotEmpty()) {
                 prefs.edit()
                     .putString("telegram_token", token)
                     .putString("telegram_chat_id", chatId)
+                    .putString(TelegramSender.PREF_TELEGRAM_PROXY, proxy)
                     .apply()
                 Toast.makeText(requireContext(), "Сохранено!", Toast.LENGTH_SHORT).show()
             } else {
@@ -71,11 +75,18 @@ class SettingsFragment : Fragment() {
         btnTest.setOnClickListener {
             val token = etToken.text.toString().trim()
             val chatId = etChatId.text.toString().trim()
+            val proxy = etProxy.text.toString().trim()
 
             if (token.isEmpty() || chatId.isEmpty()) {
                 Toast.makeText(requireContext(), "Сначала заполните и сохраните настройки", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
+
+            prefs.edit()
+                .putString("telegram_token", token)
+                .putString("telegram_chat_id", chatId)
+                .putString(TelegramSender.PREF_TELEGRAM_PROXY, proxy)
+                .apply()
 
             btnTest.isEnabled = false
             val database = BankNotificationsDatabase.getDatabase(requireContext())
@@ -90,7 +101,7 @@ class SettingsFragment : Fragment() {
                 if (success) {
                     Toast.makeText(requireContext(), "Тестовое сообщение отправлено!", Toast.LENGTH_SHORT).show()
                 } else {
-                    Toast.makeText(requireContext(), "Ошибка отправки. Проверьте токен и Chat ID", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(requireContext(), "Ошибка отправки. Проверьте токен, Chat ID и прокси", Toast.LENGTH_SHORT).show()
                 }
             }
         }

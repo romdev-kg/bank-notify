@@ -8,11 +8,17 @@ import com.banknotify.db.BankNotification
 import com.banknotify.db.BankNotificationDao
 import com.google.gson.Gson
 import kotlinx.coroutines.delay
+import okhttp3.Credentials
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
+import java.net.InetSocketAddress
+import java.net.Proxy
+import java.net.URI
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.TimeUnit
@@ -26,6 +32,7 @@ class TelegramSender(
         // Пустые значения по умолчанию - пользователь должен ввести свои
         const val DEFAULT_TOKEN = ""
         const val DEFAULT_CHAT_ID = ""
+        const val PREF_TELEGRAM_PROXY = "telegram_proxy"
     }
 
     private val prefs = EncryptedSharedPreferences.create(
@@ -48,11 +55,32 @@ class TelegramSender(
         }
     }
 
-    private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        .callTimeout(30, TimeUnit.SECONDS)
-        .build()
+    private fun createHttpClient(): OkHttpClient {
+        val rawProxy = prefs.getString(PREF_TELEGRAM_PROXY, "").orEmpty().trim()
+        val proxyConfig = parseProxyConfig(rawProxy)
+        if (rawProxy.isNotEmpty() && proxyConfig == null) {
+            throw IOException("Invalid Telegram proxy format")
+        }
+
+        val builder = OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .callTimeout(30, TimeUnit.SECONDS)
+
+        if (proxyConfig != null) {
+            builder.proxy(proxyConfig.proxy)
+
+            if (!proxyConfig.username.isNullOrEmpty() && proxyConfig.password != null) {
+                builder.proxyAuthenticator { _, response ->
+                    response.request.newBuilder()
+                        .header("Proxy-Authorization", Credentials.basic(proxyConfig.username, proxyConfig.password))
+                        .build()
+                }
+            }
+        }
+
+        return builder.build()
+    }
 
     suspend fun send(notification: BankNotification, id: Long) {
         val token = prefs.getString("telegram_token", "") ?: return
@@ -80,7 +108,7 @@ class TelegramSender(
                     .post(requestBody)
                     .build()
 
-                httpClient.newCall(request).execute().use { response ->
+                createHttpClient().newCall(request).execute().use { response ->
                     if (response.isSuccessful) {
                         dao.markAsSent(id)
                         Log.d("TelegramSender", "Message sent successfully")
@@ -123,7 +151,7 @@ class TelegramSender(
                 .post(requestBody)
                 .build()
 
-            httpClient.newCall(request).execute().use { response ->
+            createHttpClient().newCall(request).execute().use { response ->
                 Log.d("TelegramSender", "Response: ${response.code}")
                 response.isSuccessful
             }
@@ -156,7 +184,7 @@ class TelegramSender(
                 .post(requestBody)
                 .build()
 
-            httpClient.newCall(request).execute().use { response ->
+            createHttpClient().newCall(request).execute().use { response ->
                 response.isSuccessful
             }
         } catch (e: IOException) {
@@ -176,4 +204,35 @@ class TelegramSender(
             <b>Время:</b> $time
         """.trimIndent()
     }
+
+    private fun parseProxyConfig(rawValue: String): ProxyConfig? {
+        val value = rawValue.trim()
+        if (value.isEmpty()) return null
+
+        return runCatching {
+            val uri = URI(if (value.contains("://")) value else "http://$value")
+            val host = uri.host ?: return null
+            val port = if (uri.port > 0) uri.port else return null
+            val type = when (uri.scheme?.lowercase(Locale.US)) {
+                "socks", "socks4", "socks5" -> Proxy.Type.SOCKS
+                else -> Proxy.Type.HTTP
+            }
+            val credentials = uri.userInfo?.split(":", limit = 2)
+
+            ProxyConfig(
+                proxy = Proxy(type, InetSocketAddress(host, port)),
+                username = credentials?.getOrNull(0)?.urlDecode(),
+                password = credentials?.getOrNull(1)?.urlDecode()
+            )
+        }.getOrNull()
+    }
+
+    private fun String.urlDecode(): String =
+        URLDecoder.decode(this, StandardCharsets.UTF_8.name())
+
+    private data class ProxyConfig(
+        val proxy: Proxy,
+        val username: String?,
+        val password: String?
+    )
 }

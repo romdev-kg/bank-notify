@@ -71,6 +71,7 @@ class MainActivity : AppCompatActivity() {
         val btnTest = findViewById<Button>(R.id.btn_test)
         val etToken = findViewById<TextInputEditText>(R.id.et_telegram_token)
         val etChatId = findViewById<TextInputEditText>(R.id.et_chat_id)
+        val etProxy = findViewById<TextInputEditText>(R.id.et_telegram_proxy)
         val btnAddApp = findViewById<Button>(R.id.btn_add_app)
         appsContainer = findViewById(R.id.apps_container)
         tvNoApps = findViewById(R.id.tv_no_apps)
@@ -88,10 +89,12 @@ class MainActivity : AppCompatActivity() {
         // Загружаем сохранённые или дефолтные значения
         val savedToken = prefs.getString("telegram_token", "")
         val savedChatId = prefs.getString("telegram_chat_id", "")
+        val savedProxy = prefs.getString(TelegramSender.PREF_TELEGRAM_PROXY, "")
 
         if (savedToken.isNullOrEmpty()) {
             etToken.setText(TelegramSender.DEFAULT_TOKEN)
             etChatId.setText(TelegramSender.DEFAULT_CHAT_ID)
+            etProxy.setText(savedProxy)
             // Сохраняем дефолтные значения
             prefs.edit()
                 .putString("telegram_token", TelegramSender.DEFAULT_TOKEN)
@@ -100,6 +103,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             etToken.setText(savedToken)
             etChatId.setText(savedChatId)
+            etProxy.setText(savedProxy)
         }
 
         // Загружаем выбранные приложения
@@ -154,11 +158,13 @@ class MainActivity : AppCompatActivity() {
         btnSave.setOnClickListener {
             val token = etToken.text.toString().trim()
             val chatId = etChatId.text.toString().trim()
+            val proxy = etProxy.text.toString().trim()
 
             if (token.isNotEmpty() && chatId.isNotEmpty()) {
                 prefs.edit()
                     .putString("telegram_token", token)
                     .putString("telegram_chat_id", chatId)
+                    .putString(TelegramSender.PREF_TELEGRAM_PROXY, proxy)
                     .apply()
                 Toast.makeText(this, "Сохранено!", Toast.LENGTH_SHORT).show()
             } else {
@@ -169,11 +175,18 @@ class MainActivity : AppCompatActivity() {
         btnTest.setOnClickListener {
             val token = etToken.text.toString().trim()
             val chatId = etChatId.text.toString().trim()
+            val proxy = etProxy.text.toString().trim()
 
             if (token.isEmpty() || chatId.isEmpty()) {
                 Toast.makeText(this, "Сначала заполните и сохраните настройки", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
+
+            prefs.edit()
+                .putString("telegram_token", token)
+                .putString("telegram_chat_id", chatId)
+                .putString(TelegramSender.PREF_TELEGRAM_PROXY, proxy)
+                .apply()
 
             btnTest.isEnabled = false
             val database = BankNotificationsDatabase.getDatabase(this)
@@ -188,7 +201,7 @@ class MainActivity : AppCompatActivity() {
                 if (success) {
                     Toast.makeText(this@MainActivity, "Тестовое сообщение отправлено!", Toast.LENGTH_SHORT).show()
                 } else {
-                    Toast.makeText(this@MainActivity, "Ошибка отправки. Проверьте токен и Chat ID", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "Ошибка отправки. Проверьте токен, Chat ID и прокси", Toast.LENGTH_SHORT).show()
                 }
             }
         }
