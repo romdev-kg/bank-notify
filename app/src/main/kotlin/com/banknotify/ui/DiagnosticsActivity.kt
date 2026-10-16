@@ -28,6 +28,7 @@ class DiagnosticsActivity : AppCompatActivity() {
             setPadding(padding, padding, padding, padding)
         }
         setContentView(ScrollView(this).apply { addView(layout) })
+        applySystemInsets()
         status = TextView(this).apply { textSize = 16f }
         layout.addView(status)
         layout.addView(Button(this).apply {

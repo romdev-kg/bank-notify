@@ -14,34 +14,12 @@ class BankNotificationListener : NotificationListenerService() {
         var isConnected = false
             private set
 
-        // Ключевые слова для зачислений
-        private val INCOME_KEYWORDS = listOf(
-            "зачисление", "поступление", "перевод от", "получен перевод",
-            "входящий перевод", "пополнение", "возврат", "кэшбэк",
-            "начисление", "зачислено", "поступило", "+", "получено"
-        )
-
-        // Регулярки для извлечения суммы (несколько паттернов для разных банков)
-        private val AMOUNT_PATTERNS = listOf(
-            // Стандартный: 1000 ₽, 1 000,50 руб, +500 RUB
-            Regex("""[+＋]?\s*(\d[\d\s]*[.,]?\d*)\s*(?:₽|руб\.?|RUB|р\.?)""", RegexOption.IGNORE_CASE),
-            // Валюта перед суммой: ₽1000, руб. 500
-            Regex("""(?:₽|руб\.?|RUB|р\.?)\s*[+＋]?\s*(\d[\d\s]*[.,]?\d*)""", RegexOption.IGNORE_CASE),
-            // Сумма с "сумма": сумма 1000, сумма: 500.00
-            Regex("""сумм[аы]:?\s*[+＋]?\s*(\d[\d\s]*[.,]?\d*)""", RegexOption.IGNORE_CASE),
-            // Просто число с плюсом в начале: +1000
-            Regex("""[+＋]\s*(\d[\d\s]*[.,]?\d*)""")
-        )
-
-        // Регулярки для извлечения отправителя
-        private val SENDER_PATTERNS = listOf(
-            // Сбер: "Перевод от Семён Дмитриевич П."
-            Regex("""перевод от\s+([А-ЯЁа-яё]+\s+[А-ЯЁа-яё]+\.?\s*[А-ЯЁа-яё]?\.?)""", RegexOption.IGNORE_CASE),
-            // РСХБ: "Семен Дмитриевич П из Сбербанк"
-            Regex("""СБП[.\s]+([А-ЯЁа-яё]+\s+[А-ЯЁа-яё]+\.?\s*[А-ЯЁа-яё]?\.?)\s+из""", RegexOption.IGNORE_CASE),
-            // Общий: "от Имя Фамилия"
-            Regex("""от\s+([А-ЯЁа-яё]+\s+[А-ЯЁа-яё]+\.?\s*[А-ЯЁа-яё]?\.?)""", RegexOption.IGNORE_CASE)
-        )
+        internal fun paymentText(notification: Notification): String? {
+            if (notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) return null
+            val extras = notification.extras
+            return extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()?.takeIf { it.isNotBlank() }
+                ?: extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.takeIf { it.isNotBlank() }
+        }
     }
 
     override fun onCreate() {
@@ -85,9 +63,8 @@ class BankNotificationListener : NotificationListenerService() {
         val notification = sbn.notification
         val extras = notification.extras
 
-        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: return
+        val text = paymentText(notification) ?: return
         val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: ""
-        val fullText = "$title $text".lowercase()
 
         // Получаем имя приложения
         val appName = try {
@@ -98,24 +75,13 @@ class BankNotificationListener : NotificationListenerService() {
             packageName
         }
 
-        AppLog.d(TAG, "Уведомление от $appName: $title | $text")
-
-        // Проверяем что это зачисление
-        val isIncome = INCOME_KEYWORDS.any { keyword -> fullText.contains(keyword) }
-        if (!isIncome) {
-            AppLog.skipped("Не относится к оплатам")
+        val payment = BankNotificationParser.parse(text, title)
+        if (payment == null) {
+            AppLog.skipped("Не удалось распознать входящий платёж")
             return
         }
-
-        // Извлекаем сумму
-        val amount = extractAmount(fullText)
-        if (amount == null) {
-            AppLog.w(TAG, "Не удалось извлечь сумму из: $fullText")
-            return
-        }
-
-        // Извлекаем отправителя
-        val sender = extractSender(fullText)
+        val amount = payment.amount
+        val sender = payment.sender
 
         AppLog.i(TAG, "Найдено: $amount руб. от ${sender ?: "неизвестно"} ($appName)")
 
@@ -148,43 +114,4 @@ class BankNotificationListener : NotificationListenerService() {
         AppLog.i(TAG, "Сервис остановлен")
     }
 
-    private fun extractAmount(text: String): String? {
-        // Пробуем все паттерны по очереди
-        for (pattern in AMOUNT_PATTERNS) {
-            val match = pattern.find(text)
-            if (match != null) {
-                val rawAmount = match.groupValues[1]
-                    .replace(" ", "")
-                    .replace(",", ".")
-                    .replace("\\s".toRegex(), "")
-                    .trim()
-
-                if (rawAmount.isEmpty()) continue
-
-                // Форматируем сумму
-                return try {
-                    val number = rawAmount.toDouble()
-                    if (number <= 0) continue // Пропускаем нулевые и отрицательные
-                    if (number == number.toLong().toDouble()) {
-                        number.toLong().toString()
-                    } else {
-                        String.format("%.2f", number)
-                    }
-                } catch (e: NumberFormatException) {
-                    continue
-                }
-            }
-        }
-        return null
-    }
-
-    private fun extractSender(text: String): String? {
-        for (pattern in SENDER_PATTERNS) {
-            val match = pattern.find(text)
-            if (match != null) {
-                return match.groupValues[1].trim()
-            }
-        }
-        return null
-    }
 }

@@ -7,7 +7,10 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.banknotify.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -15,6 +18,30 @@ import kotlinx.coroutines.withContext
 
 /** File chooser grants access only to the document selected by the user. */
 class SettingsTransfer(private val activity: AppCompatActivity) {
+    private val importModel by lazy { ViewModelProvider(activity)[SettingsImportViewModel::class.java] }
+
+    init {
+        activity.lifecycleScope.launch {
+            activity.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                importModel.state.collect { state ->
+                    when (state) {
+                        SettingsImportViewModel.State.SUCCESS -> {
+                            importModel.consumeResult()
+                            Toast.makeText(activity, "Настройки импортированы", Toast.LENGTH_LONG).show()
+                            // Refresh whichever Activity now owns the retained operation.
+                            activity.recreate()
+                        }
+                        SettingsImportViewModel.State.FAILURE -> {
+                            importModel.consumeResult()
+                            Toast.makeText(activity, "Импорт не выполнен: проверьте файл и пароль", Toast.LENGTH_LONG).show()
+                        }
+                        else -> Unit
+                    }
+                }
+            }
+        }
+    }
+
     private val exportFile = activity.registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         uri?.let { askPassword(true) { password -> export(it, password) } }
     }
@@ -66,40 +93,6 @@ class SettingsTransfer(private val activity: AppCompatActivity) {
     }
 
     private fun import(uri: Uri, password: CharArray) {
-        activity.lifecycleScope.launch {
-            try {
-                withContext(Dispatchers.IO) {
-                    val bytes = requireNotNull(activity.contentResolver.openInputStream(uri)).use { input ->
-                        val output = java.io.ByteArrayOutputStream()
-                        val buffer = ByteArray(8192)
-                        while (true) {
-                            val size = input.read(buffer)
-                            if (size < 0) break
-                            require(output.size() + size <= SettingsBackup.MAX_BYTES)
-                            output.write(buffer, 0, size)
-                        }
-                        output.toByteArray()
-                    }
-                    // Decode and validate everything before changing a single preference.
-                    val settings = SettingsBackup.decode(bytes, password)
-                    val prefs = AppSettings.preferences(activity)
-                    val edit = prefs.edit()
-                    prefs.all.keys.filter(SettingsBackup::isSetting).forEach(edit::remove)
-                    for ((name, value) in settings) {
-                        when (value) {
-                            is String -> edit.putString(name, value)
-                            is Boolean -> edit.putBoolean(name, value)
-                        }
-                    }
-                    check(edit.commit())
-                }
-                HealthcheckWorker.configure(activity)
-                RecoveryWork.start(activity.applicationContext)
-                Toast.makeText(activity, "Настройки импортированы", Toast.LENGTH_LONG).show()
-                activity.recreate()
-            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-            catch (_: Exception) { Toast.makeText(activity, "Импорт не выполнен: проверьте файл и пароль", Toast.LENGTH_LONG).show() }
-            finally { password.fill('\u0000') }
-        }
+        importModel.import(uri, password)
     }
 }

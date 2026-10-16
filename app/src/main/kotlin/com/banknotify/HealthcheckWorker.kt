@@ -47,7 +47,7 @@ class HealthcheckWorker(context: Context, params: WorkerParameters) : CoroutineW
             }
             val client = OkHttpClient.Builder().callTimeout(20, TimeUnit.SECONDS)
                 .followRedirects(false).build()
-            client.newCall(Request.Builder().url(url).get().build()).execute().use { response ->
+            client.newCall(Request.Builder().url(url).get().build()).awaitResponse { response ->
                 val success = response.isSuccessful
                 prefs.edit().putString("healthcheck_status", if (success) "Успешный пинг" else "Ошибка HTTP ${response.code}")
                     .putLong("healthcheck_time", now).apply()

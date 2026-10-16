@@ -15,40 +15,6 @@ class BankSmsReceiver : BroadcastReceiver() {
 
         private val TRACKED_SENDERS = listOf("900", "Alfa-Bank")
 
-        private val INCOME_KEYWORDS = listOf(
-            "зачисление", "пополнение", "перевод от",
-            "входящий перевод", "возврат", "кэшбэк",
-            "зачислено", "поступило", "перевод"
-        )
-
-        // Sber: "Счёт карты MIR-7886 10:16 зачисление 13 500р"
-        private val SBER_AMOUNT = Regex(
-            """(?:зачисление|перевод|пополнение|возврат)\s+(\d[\d\s]*[.,]?\d*)\s*(?:₽|руб\.?|р\.?)""",
-            RegexOption.IGNORE_CASE
-        )
-        private val SBER_CARD = Regex(
-            """(?:MIR|VISA|MC|MAESTRO)-(\d{4})|[*](\d{4})""",
-            RegexOption.IGNORE_CASE
-        )
-        private val SBER_SENDER = Regex(
-            """от\s+([А-ЯЁа-яё]+\s+[А-ЯЁа-яё]\.?)""",
-            RegexOption.IGNORE_CASE
-        )
-        private val SBER_TYPE = Regex(
-            """(зачисление|перевод|пополнение|возврат)""",
-            RegexOption.IGNORE_CASE
-        )
-
-        // Alfa: "Пополнение *2923 на 4500 р"
-        private val ALFA_AMOUNT = Regex(
-            """на\s+(\d[\d\s]*[.,]?\d*)\s*(?:₽|руб\.?|р\.?)""",
-            RegexOption.IGNORE_CASE
-        )
-        private val ALFA_CARD = Regex("""[*]\d{4}""")
-        private val ALFA_TYPE = Regex(
-            """^(Пополнение|Зачисление|Возврат|Перевод)""",
-            RegexOption.IGNORE_CASE
-        )
     }
 
     override fun onReceive(context: Context?, intent: Intent?) {
@@ -57,7 +23,7 @@ class BankSmsReceiver : BroadcastReceiver() {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
 
         if (!isSmsEnabled(context)) {
-            AppLog.d(TAG, "SMS обработка отключена")
+            AppLog.skipped("SMS обработка отключена")
             return
         }
 
@@ -80,18 +46,13 @@ class BankSmsReceiver : BroadcastReceiver() {
                         AppLog.skipped("SMS от другого отправителя")
                         continue
                     }
-                    val lowerBody = body.lowercase()
-                    if (INCOME_KEYWORDS.none { lowerBody.contains(it) }) {
-                        AppLog.skipped("SMS не относится к оплатам")
-                        continue
-                    }
                     val parsed = when {
                         sender.equals("900", ignoreCase = true) -> parseSber(body)
                         sender.equals("Alfa-Bank", ignoreCase = true) -> parseAlfa(body)
                         else -> null
                     }
                     if (parsed == null) {
-                        AppLog.w(TAG, "Не удалось распарсить SMS от $sender")
+                        AppLog.skipped("SMS не распознано как входящий платёж")
                         continue
                     }
                     try {
@@ -138,42 +99,12 @@ class BankSmsReceiver : BroadcastReceiver() {
         val sender: String? = null
     )
 
-    private fun parseSber(body: String): ParsedSms? {
-        val amountMatch = SBER_AMOUNT.find(body) ?: return null
-        val rawAmount = amountMatch.groupValues[1].replace(" ", "").replace(",", ".").trim()
-        val amount = formatAmount(rawAmount) ?: return null
+    private fun parseSber(body: String): ParsedSms? = parseBank(body, "Сбербанк")
 
-        val cardMatch = SBER_CARD.find(body)
-        val card = cardMatch?.value ?: "????"
+    private fun parseAlfa(body: String): ParsedSms? = parseBank(body, "Альфа-Банк")
 
-        val type = SBER_TYPE.find(body)?.groupValues?.get(1) ?: "зачисление"
-        val sender = SBER_SENDER.find(body)?.groupValues?.get(1)?.trim()
-
-        return ParsedSms("Сбербанк", amount, card, type, sender)
-    }
-
-    private fun parseAlfa(body: String): ParsedSms? {
-        val amountMatch = ALFA_AMOUNT.find(body) ?: return null
-        val rawAmount = amountMatch.groupValues[1].replace(" ", "").replace(",", ".").trim()
-        val amount = formatAmount(rawAmount) ?: return null
-
-        val card = ALFA_CARD.find(body)?.value ?: "????"
-        val type = ALFA_TYPE.find(body)?.groupValues?.get(1) ?: "Пополнение"
-
-        return ParsedSms("Альфа-Банк", amount, card, type)
-    }
-
-    private fun formatAmount(raw: String): String? {
-        return try {
-            val number = raw.toDouble()
-            if (number <= 0) return null
-            if (number == number.toLong().toDouble()) {
-                number.toLong().toString()
-            } else {
-                String.format("%.2f", number)
-            }
-        } catch (e: NumberFormatException) {
-            null
-        }
+    private fun parseBank(body: String, bankName: String): ParsedSms? {
+        val payment = BankNotificationParser.parse(body) ?: return null
+        return ParsedSms(bankName, payment.amount, BankNotificationParser.card(body), payment.operationType, payment.sender)
     }
 }

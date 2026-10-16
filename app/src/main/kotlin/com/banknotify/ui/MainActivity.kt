@@ -62,6 +62,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        applySystemInsets()
 
         val btnStatus = findViewById<Button>(R.id.btn_status)
         val tvStatus = findViewById<TextView>(R.id.tv_status)

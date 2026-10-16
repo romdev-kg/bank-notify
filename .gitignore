@@ -39,3 +39,8 @@ signing.properties
 
 # Claude Code local user config (personal allow paths)
 .claude/settings.local.json
+
+# Local CI SDK and Python helper cache
+.android-sdk/
+__pycache__/
+dist/

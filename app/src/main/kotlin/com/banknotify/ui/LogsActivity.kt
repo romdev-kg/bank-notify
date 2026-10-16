@@ -17,6 +17,7 @@ class LogsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_logs)
+        applySystemInsets()
 
         tvLogs = findViewById(R.id.tv_logs)
         scrollView = findViewById(R.id.scroll_view)

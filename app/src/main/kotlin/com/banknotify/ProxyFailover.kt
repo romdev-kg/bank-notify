@@ -1,13 +1,17 @@
 package com.banknotify
 
 import java.io.IOException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 internal object ProxyFailover {
     suspend fun deliver(proxies: List<String>, send: suspend (String) -> TelegramDeliveryResult): TelegramDeliveryResult {
         var last = TelegramDeliveryResult(false, "Прокси недоступны")
         for ((index, proxy) in proxies.withIndex()) {
+            currentCoroutineContext().ensureActive()
             try {
                 last = send(proxy)
+                currentCoroutineContext().ensureActive()
                 // Telegram application errors and rate limits are independent of the proxy.
                 if (last.delivered || last.retryAfterMillis > 0 || (last.error?.startsWith("Telegram HTTP 4") == true && last.error != "Telegram HTTP 407")) return last
             } catch (_: IOException) {
@@ -16,6 +20,7 @@ internal object ProxyFailover {
                 last = TelegramDeliveryResult(false, "Некорректные настройки: маршрут ${index + 1}")
             }
         }
+        currentCoroutineContext().ensureActive()
         return last
     }
 }

@@ -20,12 +20,11 @@ Android app (Kotlin) that intercepts bank push notifications via `NotificationLi
 ### Data Flow
 
 ```
-Bank app notification → BankNotificationListener (NotificationListenerService)
-  → filter by tracked apps (BankAppsManager)
-  → match income keywords (INCOME_KEYWORDS)
-  → extract amount (AMOUNT_PATTERNS regex) + sender (SENDER_PATTERNS regex)
-  → TelegramSender → Telegram Bot API (OkHttp)
-  → save to Room database (BankNotificationsDatabase)
+Bank notification / SMS → shared BankNotificationParser
+  → Room transaction: history + persistent OutboxMessage
+  → DeliveryWorker → TelegramSender → ordered proxy failover → Telegram Bot API
+  → mark delivered only after Telegram confirms message_id
+  → failures remain queued; WorkManager retries with backoff and retry_after
 ```
 
 ### Key Components
@@ -39,13 +38,13 @@ Bank app notification → BankNotificationListener (NotificationListenerService)
 ### Storage
 
 - **Credentials**: `EncryptedSharedPreferences` (AES256, key alias `bank_notify`)
-- **Transaction history**: Room database (`BankNotificationsDatabase`), single `BankNotification` entity
+- **Transaction history**: Room database (`BankNotificationsDatabase`), `BankNotification` history and `OutboxMessage` delivery queue (schema v2)
 - **App tracking config**: `EncryptedSharedPreferences` via `BankAppsManager`
 
 ## Project Conventions
 
-- Language: Kotlin 2.0.21, JVM target 17
-- Min SDK 26 (Android 8.0), target/compile SDK 35
+- Language: Kotlin 2.4.21 (AGP built-in Kotlin), JVM target 17
+- Min SDK 26 (Android 8.0), target SDK 37, compile SDK 37.2; build JDK 25, Gradle 9.7.0
 - View system with ViewBinding (no Compose)
 - Coroutines for async (IO dispatcher for network/DB, Main for UI)
 - KSP for Room annotation processing
@@ -55,6 +54,13 @@ Bank app notification → BankNotificationListener (NotificationListenerService)
 ## Android-Specific Notes
 
 - The `NotificationListenerService` requires manual user permission grant in system settings — it cannot be requested programmatically
-- Notification filter meta-data in manifest: accepts `conversations|alerting`, excludes `ongoing|silent`
+- Notification filter meta-data in manifest: accepts `conversations|alerting|silent|ongoing`; do not disable silent bank payments
 - ProGuard keeps all `com.banknotify.**` classes (broad keep rule in `proguard-rules.pro`)
 - `QUERY_ALL_PACKAGES` permission is needed for app picker to list all installed apps on Android 11+
+
+## Delivery
+
+GitLab is primary CI: verify tests/lint/debug, then signed release on protected main/tags.
+The existing keystore is stored only in protected/masked CI variables. Preserve signing identity and applicationId.
+GitHub is a mirror with a manual fallback workflow; never force-push.
+System backup excludes encrypted preferences and payment database; use password-encrypted settings export for device transfers.

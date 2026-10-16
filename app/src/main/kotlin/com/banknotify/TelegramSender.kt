@@ -11,12 +11,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
-import java.net.InetSocketAddress
-import java.net.Proxy
-import java.net.URI
-import java.net.URLDecoder
-import java.nio.charset.StandardCharsets
-import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 class TelegramSender(
@@ -52,7 +46,7 @@ class TelegramSender(
     }
 
     private fun createHttpClient(rawProxy: String): OkHttpClient {
-        val proxyConfig = parseProxyConfig(rawProxy)
+        val proxyConfig = TelegramProxyConfig.parse(rawProxy)
         if (rawProxy.isNotEmpty() && proxyConfig == null) {
             throw IOException("Invalid Telegram proxy format")
         }
@@ -93,7 +87,7 @@ class TelegramSender(
             val request = Request.Builder()
                 .url("https://api.telegram.org/bot$token/sendMessage")
                 .post(body).build()
-            createHttpClient(proxy).newCall(request).execute().use { response ->
+            createHttpClient(proxy).newCall(request).awaitResponse { response ->
                 TelegramDeliveryResult.parse(response.code, response.body?.string().orEmpty())
             }
         }
@@ -102,36 +96,4 @@ class TelegramSender(
     suspend fun sendSimple(message: String): Boolean = deliver(message).delivered
 
     suspend fun sendTest(): Boolean = sendSimple("BankNotify: Тестовое сообщение\nПриложение настроено корректно!")
-
-    private fun parseProxyConfig(rawValue: String): ProxyConfig? {
-        val value = rawValue.trim()
-        if (value.isEmpty()) return null
-
-        return runCatching {
-            val uri = URI(if (value.contains("://")) value else "http://$value")
-            val host = uri.host ?: return null
-            val port = if (uri.port in 1..65535) uri.port else return null
-            val type = when (uri.scheme?.lowercase(Locale.US)) {
-                "socks", "socks4", "socks5" -> Proxy.Type.SOCKS
-                "http" -> Proxy.Type.HTTP
-                else -> return null
-            }
-            val credentials = uri.userInfo?.split(":", limit = 2)
-
-            ProxyConfig(
-                proxy = Proxy(type, InetSocketAddress(host, port)),
-                username = credentials?.getOrNull(0)?.urlDecode(),
-                password = credentials?.getOrNull(1)?.urlDecode()
-            )
-        }.getOrNull()
-    }
-
-    private fun String.urlDecode(): String =
-        URLDecoder.decode(this, StandardCharsets.UTF_8.name())
-
-    private data class ProxyConfig(
-        val proxy: Proxy,
-        val username: String?,
-        val password: String?
-    )
 }

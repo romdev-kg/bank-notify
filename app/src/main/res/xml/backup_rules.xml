@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- The master key cannot be restored on another installation. -->
+    <exclude domain="sharedpref" path="bank_notify.xml" />
+    <!-- Restoring an older outbox snapshot could resend completed payments. -->
+    <exclude domain="database" path="bank_notifications.db" />
+    <exclude domain="database" path="bank_notifications.db-wal" />
+    <exclude domain="database" path="bank_notifications.db-shm" />
+    <exclude domain="database" path="bank_notifications.db-journal" />
+</full-backup-content>

@@ -1,7 +1,7 @@
 package com.banknotify
 
 import java.io.IOException
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -42,5 +42,20 @@ class ProxyFailoverTest {
         }
         assertEquals(1, calls)
         assertEquals(60_000, result.retryAfterMillis)
+    }
+    @Test fun `cancellation during a failed route prevents trying the backup`() = runBlocking {
+        val attempted = mutableListOf<String>()
+        val job = launch(start = CoroutineStart.UNDISPATCHED) {
+            ProxyFailover.deliver(listOf("first", "second")) {
+                attempted += it
+                if (it == "first") {
+                    currentCoroutineContext().cancel()
+                    throw IOException("route stopped")
+                }
+                TelegramDeliveryResult(true)
+            }
+        }
+        job.join()
+        assertEquals(listOf("first"), attempted)
     }
 }
