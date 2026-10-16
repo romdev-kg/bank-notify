@@ -26,6 +26,7 @@ out/
 *.swp
 
 # Kotlin
+.kotlin/
 *.kotlin_module
 
 # Proguard

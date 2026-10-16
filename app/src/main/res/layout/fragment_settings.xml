@@ -32,8 +32,11 @@
         android:id="@+id/et_telegram_proxy"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Telegram Proxy (host:port или socks5://host:port)"
-        android:inputType="textUri"
+        android:hint="Прокси: по одному на строку"
+        android:inputType="textMultiLine|textNoSuggestions"
+                        android:minLines="2"
+                        android:maxLines="6"
+                        android:gravity="top"
         android:layout_marginTop="16dp" />
 
     <Button

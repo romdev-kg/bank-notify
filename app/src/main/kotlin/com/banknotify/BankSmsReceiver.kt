@@ -6,9 +6,6 @@ import android.content.Intent
 import android.provider.Telephony
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
-import com.banknotify.db.BankNotificationsDatabase
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class BankSmsReceiver : BroadcastReceiver() {
@@ -74,49 +71,45 @@ class BankSmsReceiver : BroadcastReceiver() {
             senderToBody.getOrPut(sender) { StringBuilder() }.append(msg.messageBody ?: "")
         }
 
-        for ((sender, bodyBuilder) in senderToBody) {
-            val body = bodyBuilder.toString()
-            AppLog.d(TAG, "SMS от $sender: $body")
-
-            if (!TRACKED_SENDERS.any { it.equals(sender, ignoreCase = true) }) {
-                continue
-            }
-
-            val lowerBody = body.lowercase()
-            if (INCOME_KEYWORDS.none { lowerBody.contains(it) }) {
-                AppLog.d(TAG, "Пропуск SMS: не про зачисление")
-                continue
-            }
-
-            val parsed = when {
-                sender.equals("900", ignoreCase = true) -> parseSber(body)
-                sender.equals("Alfa-Bank", ignoreCase = true) -> parseAlfa(body)
-                else -> null
-            }
-
-            if (parsed == null) {
-                AppLog.w(TAG, "Не удалось распарсить SMS от $sender")
-                continue
-            }
-
-            AppLog.i(TAG, "SMS: ${parsed.type} ${parsed.amount}р карта ${parsed.card}")
-
-            val database = BankNotificationsDatabase.getDatabase(context)
-            val telegramSender = TelegramSender(context, database.notificationDao())
-
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    val message = buildString {
-                        append("${parsed.amount} ₽")
-                        if (parsed.sender != null) append(" от ${parsed.sender}")
-                        append(" (${parsed.bankName}, ${parsed.card}) [SMS]")
+        val pendingResult = goAsync()
+        RecoveryWork.intakeScope.launch {
+            try {
+                for ((sender, bodyBuilder) in senderToBody) {
+                    val body = bodyBuilder.toString()
+                    if (!TRACKED_SENDERS.any { it.equals(sender, ignoreCase = true) }) {
+                        AppLog.skipped("SMS от другого отправителя")
+                        continue
                     }
-                    telegramSender.sendSimple(message)
-                    AppLog.i(TAG, "Отправлено в Telegram: $message")
-                } catch (e: Exception) {
-                    AppLog.e(TAG, "Ошибка отправки в Telegram: ${e.message}")
+                    val lowerBody = body.lowercase()
+                    if (INCOME_KEYWORDS.none { lowerBody.contains(it) }) {
+                        AppLog.skipped("SMS не относится к оплатам")
+                        continue
+                    }
+                    val parsed = when {
+                        sender.equals("900", ignoreCase = true) -> parseSber(body)
+                        sender.equals("Alfa-Bank", ignoreCase = true) -> parseAlfa(body)
+                        else -> null
+                    }
+                    if (parsed == null) {
+                        AppLog.w(TAG, "Не удалось распарсить SMS от $sender")
+                        continue
+                    }
+                    try {
+                        val message = buildString {
+                            append("${parsed.amount} ₽")
+                            if (parsed.sender != null) append(" от ${parsed.sender}")
+                            append(" (${parsed.bankName}, ${parsed.card}) [SMS]")
+                        }
+                        val timestamps = messages.filter { it.originatingAddress == sender }
+                            .joinToString(",") { it.timestampMillis.toString() }
+                        DeliveryQueue.enqueue(context.applicationContext,
+                            DeliveryQueue.eventKey("sms", sender, timestamps, body), message)
+                    } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                    catch (_: Exception) {
+                        AppLog.e(TAG, "Не удалось сохранить SMS в очередь доставки")
+                    }
                 }
-            }
+            } finally { pendingResult.finish() }
         }
     }
 

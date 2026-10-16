@@ -1,13 +1,10 @@
 package com.banknotify
 
 import android.content.Context
-import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
-import com.banknotify.db.BankNotification
 import com.banknotify.db.BankNotificationDao
 import com.google.gson.Gson
-import kotlinx.coroutines.delay
 import okhttp3.Credentials
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -19,7 +16,6 @@ import java.net.Proxy
 import java.net.URI
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
-import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -55,8 +51,7 @@ class TelegramSender(
         }
     }
 
-    private fun createHttpClient(): OkHttpClient {
-        val rawProxy = prefs.getString(PREF_TELEGRAM_PROXY, "").orEmpty().trim()
+    private fun createHttpClient(rawProxy: String): OkHttpClient {
         val proxyConfig = parseProxyConfig(rawProxy)
         if (rawProxy.isNotEmpty() && proxyConfig == null) {
             throw IOException("Invalid Telegram proxy format")
@@ -72,6 +67,7 @@ class TelegramSender(
 
             if (!proxyConfig.username.isNullOrEmpty() && proxyConfig.password != null) {
                 builder.proxyAuthenticator { _, response ->
+                    if (response.request.header("Proxy-Authorization") != null) return@proxyAuthenticator null
                     response.request.newBuilder()
                         .header("Proxy-Authorization", Credentials.basic(proxyConfig.username, proxyConfig.password))
                         .build()
@@ -82,128 +78,30 @@ class TelegramSender(
         return builder.build()
     }
 
-    suspend fun send(notification: BankNotification, id: Long) {
-        val token = prefs.getString("telegram_token", "") ?: return
-        val chatId = prefs.getString("telegram_chat_id", "") ?: return
-
+    internal suspend fun deliver(message: String): TelegramDeliveryResult {
+        val token = prefs.getString("telegram_token", "").orEmpty().trim()
+        val chatId = prefs.getString("telegram_chat_id", "").orEmpty().trim()
         if (token.isEmpty() || chatId.isEmpty()) {
-            dao.recordError(id, "Token or Chat ID not set")
-            return
+            return TelegramDeliveryResult(false, "Не задан токен или Chat ID")
         }
-
-        val message = formatMessage(notification)
-
-        repeat(3) { attempt ->
-            try {
-                val requestBody = mapOf(
-                    "chat_id" to chatId,
-                    "text" to message,
-                    "parse_mode" to "HTML"
-                ).let {
-                    Gson().toJson(it).toRequestBody("application/json".toMediaType())
-                }
-
-                val request = Request.Builder()
-                    .url("https://api.telegram.org/bot$token/sendMessage")
-                    .post(requestBody)
-                    .build()
-
-                createHttpClient().newCall(request).execute().use { response ->
-                    if (response.isSuccessful) {
-                        dao.markAsSent(id)
-                        Log.d("TelegramSender", "Message sent successfully")
-                        return
-                    } else {
-                        Log.e("TelegramSender", "Error ${response.code}: ${response.message}")
-                        if (attempt < 2) {
-                            delay((1000L shl attempt))
-                        }
-                    }
-                }
-            } catch (e: IOException) {
-                Log.e("TelegramSender", "Network error on attempt $attempt", e)
-                if (attempt == 2) {
-                    dao.recordError(id, e.message ?: "Network error")
-                } else {
-                    delay((1000L shl attempt))
-                }
-            }
-        }
-    }
-
-    suspend fun sendSimple(message: String): Boolean {
-        val token = prefs.getString("telegram_token", "") ?: return false
-        val chatId = prefs.getString("telegram_chat_id", "") ?: return false
-
-        if (token.isEmpty() || chatId.isEmpty()) return false
-
-        return try {
-            val requestBody = mapOf(
-                "chat_id" to chatId,
-                "text" to message,
-                "parse_mode" to "HTML"
-            ).let {
-                Gson().toJson(it).toRequestBody("application/json".toMediaType())
-            }
-
+        val proxies = prefs.getString(PREF_TELEGRAM_PROXY, "").orEmpty()
+            .lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.distinct().toList()
+            .ifEmpty { listOf("") }
+        return ProxyFailover.deliver(proxies) { proxy ->
+            val body = Gson().toJson(mapOf("chat_id" to chatId, "text" to message))
+                .toRequestBody("application/json".toMediaType())
             val request = Request.Builder()
                 .url("https://api.telegram.org/bot$token/sendMessage")
-                .post(requestBody)
-                .build()
-
-            createHttpClient().newCall(request).execute().use { response ->
-                Log.d("TelegramSender", "Response: ${response.code}")
-                response.isSuccessful
+                .post(body).build()
+            createHttpClient(proxy).newCall(request).execute().use { response ->
+                TelegramDeliveryResult.parse(response.code, response.body?.string().orEmpty())
             }
-        } catch (e: IOException) {
-            Log.e("TelegramSender", "Send failed", e)
-            false
         }
     }
 
-    suspend fun sendTest(): Boolean {
-        val token = prefs.getString("telegram_token", "") ?: return false
-        val chatId = prefs.getString("telegram_chat_id", "") ?: return false
+    suspend fun sendSimple(message: String): Boolean = deliver(message).delivered
 
-        if (token.isEmpty() || chatId.isEmpty()) {
-            return false
-        }
-
-        return try {
-            val message = "BankNotify: Тестовое сообщение\nПриложение настроено корректно!"
-            val requestBody = mapOf(
-                "chat_id" to chatId,
-                "text" to message,
-                "parse_mode" to "HTML"
-            ).let {
-                Gson().toJson(it).toRequestBody("application/json".toMediaType())
-            }
-
-            val request = Request.Builder()
-                .url("https://api.telegram.org/bot$token/sendMessage")
-                .post(requestBody)
-                .build()
-
-            createHttpClient().newCall(request).execute().use { response ->
-                response.isSuccessful
-            }
-        } catch (e: IOException) {
-            Log.e("TelegramSender", "Test message failed", e)
-            false
-        }
-    }
-
-    private fun formatMessage(notification: BankNotification): String {
-        val time = SimpleDateFormat("HH:mm:ss", Locale("ru", "RU")).format(notification.timestamp)
-        return """
-            <b>${notification.bankName}</b>
-
-            <b>Тип:</b> ${notification.operationType}
-            <b>Сумма:</b> ${notification.amount} руб.
-            <b>Счёт:</b> ...${notification.accountNumber}
-            <b>Время:</b> $time
-        """.trimIndent()
-    }
+    suspend fun sendTest(): Boolean = sendSimple("BankNotify: Тестовое сообщение\nПриложение настроено корректно!")
 
     private fun parseProxyConfig(rawValue: String): ProxyConfig? {
         val value = rawValue.trim()
@@ -212,10 +110,11 @@ class TelegramSender(
         return runCatching {
             val uri = URI(if (value.contains("://")) value else "http://$value")
             val host = uri.host ?: return null
-            val port = if (uri.port > 0) uri.port else return null
+            val port = if (uri.port in 1..65535) uri.port else return null
             val type = when (uri.scheme?.lowercase(Locale.US)) {
                 "socks", "socks4", "socks5" -> Proxy.Type.SOCKS
-                else -> Proxy.Type.HTTP
+                "http" -> Proxy.Type.HTTP
+                else -> return null
             }
             val credentials = uri.userInfo?.split(":", limit = 2)
 

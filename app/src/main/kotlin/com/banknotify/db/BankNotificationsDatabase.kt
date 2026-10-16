@@ -2,6 +2,8 @@ package com.banknotify.db
 
 import android.content.Context
 import androidx.room.*
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Entity(tableName = "bank_notifications")
 data class BankNotification(
@@ -33,11 +35,18 @@ interface BankNotificationDao {
     suspend fun deleteOldNotifications(timestamp: Long)
 }
 
-@Database(entities = [BankNotification::class], version = 1, exportSchema = false)
+@Database(entities = [BankNotification::class, OutboxMessage::class], version = 2, exportSchema = false)
 abstract class BankNotificationsDatabase : RoomDatabase() {
     abstract fun notificationDao(): BankNotificationDao
+    abstract fun outboxDao(): OutboxDao
 
     companion object {
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS telegram_outbox (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, eventKey TEXT NOT NULL, message TEXT NOT NULL, createdAt INTEGER NOT NULL, sent INTEGER NOT NULL, attempts INTEGER NOT NULL, nextAttemptAt INTEGER NOT NULL, lastError TEXT)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_telegram_outbox_eventKey ON telegram_outbox (eventKey)")
+            }
+        }
         @Volatile
         private var INSTANCE: BankNotificationsDatabase? = null
 
@@ -47,7 +56,7 @@ abstract class BankNotificationsDatabase : RoomDatabase() {
                     context.applicationContext,
                     BankNotificationsDatabase::class.java,
                     "bank_notifications.db"
-                ).build()
+                ).addMigrations(MIGRATION_1_2).build()
                 INSTANCE = instance
                 instance
             }

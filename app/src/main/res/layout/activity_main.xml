@@ -167,13 +167,16 @@
                     app:boxCornerRadiusTopEnd="12dp"
                     app:boxCornerRadiusBottomStart="12dp"
                     app:boxCornerRadiusBottomEnd="12dp"
-                    app:helperText="Например: host:port, http://user:pass@host:port, socks5://host:port">
+                    app:helperText="По одному на строку: host:port, http://user:pass@host:port, socks5://host:port. Порядок — приоритет.">
 
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/et_telegram_proxy"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:inputType="textUri" />
+                        android:inputType="textMultiLine|textNoSuggestions"
+                        android:minLines="2"
+                        android:maxLines="6"
+                        android:gravity="top" />
 
                 </com.google.android.material.textfield.TextInputLayout>
 
@@ -205,6 +208,21 @@
 
                 </LinearLayout>
 
+                <Button
+                    android:id="@+id/btn_export_settings"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Экспорт настроек" />
+                <Button
+                    android:id="@+id/btn_import_settings"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Импорт настроек" />
+                <Button
+                    android:id="@+id/btn_diagnostics"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Диагностика" />
             </LinearLayout>
 
         </androidx.cardview.widget.CardView>

@@ -1,22 +1,12 @@
 package com.banknotify
 
 import android.app.Notification
-import android.content.ComponentName
-import android.os.Build
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
-import com.banknotify.db.BankNotificationsDatabase
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 class BankNotificationListener : NotificationListenerService() {
 
-    private val scope = CoroutineScope(Dispatchers.IO + Job())
-    private lateinit var database: BankNotificationsDatabase
-    private lateinit var telegramSender: TelegramSender
 
     companion object {
         private const val TAG = "Listener"
@@ -56,25 +46,25 @@ class BankNotificationListener : NotificationListenerService() {
 
     override fun onCreate() {
         super.onCreate()
-        database = BankNotificationsDatabase.getDatabase(applicationContext)
-        telegramSender = TelegramSender(applicationContext, database.notificationDao())
+        ListenerRecovery.schedule(applicationContext)
         AppLog.i(TAG, "Сервис запущен")
     }
 
     override fun onListenerConnected() {
         super.onListenerConnected()
         isConnected = true
+        ListenerRecovery.connected()
         AppLog.i(TAG, "Listener подключён к системе")
+        // Recover notifications still present after a disconnect; the durable event key deduplicates callbacks.
+        try { activeNotifications?.forEach { onNotificationPosted(it) } }
+        catch (_: Exception) { AppLog.w(TAG, "Не удалось прочитать оставшиеся уведомления") }
     }
 
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
         isConnected = false
-        AppLog.w(TAG, "Listener отключён от системы, запрашиваем rebind")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            val cn = ComponentName(applicationContext, BankNotificationListener::class.java)
-            requestRebind(cn)
-        }
+        AppLog.w(TAG, "Listener отключён от системы; запускаем повторы")
+        ListenerRecovery.schedule(applicationContext)
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
@@ -84,11 +74,11 @@ class BankNotificationListener : NotificationListenerService() {
 
         // Проверяем есть ли приложение в списке отслеживаемых и включено ли оно
         if (!BankAppsManager.isAppTracked(applicationContext, packageName)) {
-            AppLog.d(TAG, "Пропуск: $packageName не в списке")
+            AppLog.skipped("Приложение не выбрано")
             return
         }
         if (!BankAppsManager.isAppEnabled(applicationContext, packageName)) {
-            AppLog.d(TAG, "Пропуск: $packageName отключено")
+            AppLog.skipped("Приложение отключено")
             return
         }
 
@@ -113,7 +103,7 @@ class BankNotificationListener : NotificationListenerService() {
         // Проверяем что это зачисление
         val isIncome = INCOME_KEYWORDS.any { keyword -> fullText.contains(keyword) }
         if (!isIncome) {
-            AppLog.d(TAG, "Пропуск: не про деньги")
+            AppLog.skipped("Не относится к оплатам")
             return
         }
 
@@ -129,7 +119,7 @@ class BankNotificationListener : NotificationListenerService() {
 
         AppLog.i(TAG, "Найдено: $amount руб. от ${sender ?: "неизвестно"} ($appName)")
 
-        scope.launch {
+        RecoveryWork.intakeScope.launch {
             try {
                 val message = buildString {
                     append("$amount ₽")
@@ -139,8 +129,8 @@ class BankNotificationListener : NotificationListenerService() {
                     append(" ($appName)")
                 }
 
-                telegramSender.sendSimple(message)
-                AppLog.i(TAG, "Отправлено в Telegram: $message")
+                val key = DeliveryQueue.eventKey("push", sbn.key, sbn.postTime.toString(), title, text)
+                DeliveryQueue.enqueue(applicationContext, key, message)
             } catch (e: Exception) {
                 AppLog.e(TAG, "Ошибка отправки в Telegram", e)
             }
@@ -153,7 +143,8 @@ class BankNotificationListener : NotificationListenerService() {
 
     override fun onDestroy() {
         super.onDestroy()
-        scope.cancel()
+        isConnected = false
+        ListenerRecovery.schedule(applicationContext)
         AppLog.i(TAG, "Сервис остановлен")
     }
 

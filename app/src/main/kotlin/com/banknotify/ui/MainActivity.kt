@@ -1,7 +1,6 @@
 package com.banknotify.ui
 
 import android.Manifest
-import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -9,7 +8,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
-import android.service.notification.NotificationListenerService
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.Button
@@ -40,6 +38,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
+
+    private val settingsTransfer = SettingsTransfer(this)
 
     private val scope = CoroutineScope(Dispatchers.Main + Job())
     private lateinit var appsContainer: LinearLayout
@@ -145,6 +145,11 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
         }
 
+        findViewById<Button>(R.id.btn_export_settings).setOnClickListener { settingsTransfer.export() }
+        findViewById<Button>(R.id.btn_import_settings).setOnClickListener { settingsTransfer.import() }
+        findViewById<Button>(R.id.btn_diagnostics).setOnClickListener {
+            startActivity(Intent(this, DiagnosticsActivity::class.java))
+        }
         val btnLogs = findViewById<Button>(R.id.btn_logs)
         btnLogs.setOnClickListener {
             startActivity(Intent(this, LogsActivity::class.java))
@@ -242,6 +247,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        statusHandler.removeCallbacks(statusRefresh)
+        statusHandler.post(statusRefresh)
         val tvStatus = findViewById<TextView>(R.id.tv_status)
         val statusIndicator = findViewById<View>(R.id.status_indicator)
         updateStatus(tvStatus, statusIndicator)
@@ -252,36 +259,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun ensureListenerConnected() {
-        if (!hasNotificationAccess() || BankNotificationListener.isConnected) return
+        com.banknotify.ListenerRecovery.schedule(applicationContext)
+    }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            val cn = ComponentName(this, BankNotificationListener::class.java)
-            NotificationListenerService.requestRebind(cn)
-            AppLog.i("MainActivity", "Listener не подключён, вызван requestRebind()")
-
-            // Через 3 сек — toggle компонента если не подключился
-            Handler(Looper.getMainLooper()).postDelayed({
-                if (!BankNotificationListener.isConnected && hasNotificationAccess()) {
-                    AppLog.i("MainActivity", "Toggle компонента для принудительного rebind")
-                    try {
-                        val pm = packageManager
-                        pm.setComponentEnabledSetting(
-                            cn,
-                            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                            PackageManager.DONT_KILL_APP
-                        )
-                        pm.setComponentEnabledSetting(
-                            cn,
-                            PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                            PackageManager.DONT_KILL_APP
-                        )
-                        NotificationListenerService.requestRebind(cn)
-                    } catch (e: Exception) {
-                        AppLog.e("MainActivity", "Toggle failed: ${e.message}")
-                    }
-                }
-            }, 3000)
+    private val statusHandler = Handler(Looper.getMainLooper())
+    private val statusRefresh = object : Runnable {
+        override fun run() {
+            updateStatus(findViewById(R.id.tv_status), findViewById(R.id.status_indicator))
+            statusHandler.postDelayed(this, 2000)
         }
+    }
+
+    override fun onPause() {
+        statusHandler.removeCallbacks(statusRefresh)
+        super.onPause()
     }
 
     private fun updateStatus(tvStatus: TextView, statusIndicator: View) {
@@ -301,13 +292,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun hasNotificationAccess(): Boolean {
-        val enabledListeners = Settings.Secure.getString(
-            contentResolver,
-            "enabled_notification_listeners"
-        )
-        return enabledListeners?.contains(packageName) == true
-    }
+    private fun hasNotificationAccess(): Boolean = com.banknotify.ListenerRecovery.hasAccess(this)
 
     private fun isSmsEnabled(): Boolean {
         val prefs = EncryptedSharedPreferences.create(
