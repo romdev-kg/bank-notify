@@ -11,8 +11,8 @@ mirror-to-github:
     - git config --global user.name "GitLab CI"
     - git remote add github "https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git" || git remote set-url github "https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git"
     - git fetch --unshallow origin || true
-    - git push github HEAD:${CI_COMMIT_REF_NAME} --force
-    - git push github --tags --force
+    - git push github HEAD:${CI_COMMIT_REF_NAME}
+    - git push github --tags
   rules:
     - if: $CI_COMMIT_BRANCH
       when: always
