@@ -18,11 +18,29 @@ import androidx.recyclerview.widget.RecyclerView
 import com.banknotify.BankAppsManager
 import com.banknotify.InstalledApp
 import com.banknotify.R
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class AppPickerDialog(
     context: Context,
     private val onAppSelected: (InstalledApp) -> Unit
 ) : Dialog(context) {
+    private lateinit var recyclerView: RecyclerView
+    private lateinit var tvLoading: TextView
+    private lateinit var etSearch: EditText
+    private lateinit var btnRefresh: Button
+    private var scope: CoroutineScope? = null
+    private var loadJob: Job? = null
+    private val adapter = AppsAdapter(emptyList()) { app ->
+        onAppSelected(app)
+        dismiss()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -34,67 +52,12 @@ class AppPickerDialog(
             ViewGroup.LayoutParams.WRAP_CONTENT
         )
 
-        val recyclerView = findViewById<RecyclerView>(R.id.rv_apps)
-        val tvLoading = findViewById<TextView>(R.id.tv_loading)
-        val etSearch = findViewById<EditText>(R.id.et_search)
-        val btnRefresh = findViewById<Button>(R.id.btn_refresh_apps)
+        recyclerView = findViewById(R.id.rv_apps)
+        tvLoading = findViewById(R.id.tv_loading)
+        etSearch = findViewById(R.id.et_search)
+        btnRefresh = findViewById(R.id.btn_refresh_apps)
 
         recyclerView.layoutManager = LinearLayoutManager(context)
-
-        loadApps(recyclerView, tvLoading, etSearch, btnRefresh)
-
-        btnRefresh.setOnClickListener {
-            BankAppsManager.invalidateCache()
-            etSearch.text.clear()
-            recyclerView.visibility = View.GONE
-            etSearch.visibility = View.GONE
-            btnRefresh.visibility = View.GONE
-            tvLoading.visibility = View.VISIBLE
-            loadApps(recyclerView, tvLoading, etSearch, btnRefresh)
-        }
-    }
-
-    private fun loadApps(
-        recyclerView: RecyclerView,
-        tvLoading: TextView,
-        etSearch: EditText,
-        btnRefresh: Button
-    ) {
-        if (BankAppsManager.hasCachedApps()) {
-            showApps(
-                BankAppsManager.getAllInstalledApps(context)
-                    .filter { !BankAppsManager.isAppTracked(context, it.packageName) },
-                recyclerView, tvLoading, etSearch, btnRefresh
-            )
-        } else {
-            Thread {
-                val apps = BankAppsManager.getAllInstalledApps(context)
-                    .filter { !BankAppsManager.isAppTracked(context, it.packageName) }
-                recyclerView.post {
-                    showApps(apps, recyclerView, tvLoading, etSearch, btnRefresh)
-                }
-            }.start()
-        }
-    }
-
-    private fun showApps(
-        apps: List<InstalledApp>,
-        recyclerView: RecyclerView,
-        tvLoading: TextView,
-        etSearch: EditText,
-        btnRefresh: Button
-    ) {
-        tvLoading.visibility = View.GONE
-        etSearch.visibility = View.VISIBLE
-        btnRefresh.visibility = View.VISIBLE
-        recyclerView.visibility = View.VISIBLE
-
-        val adapter = AppsAdapter(apps) { app ->
-            onAppSelected(app)
-            dismiss()
-        }
-        recyclerView.adapter = adapter
-
         etSearch.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
@@ -102,10 +65,60 @@ class AppPickerDialog(
                 adapter.filter(s?.toString() ?: "")
             }
         })
+
+        btnRefresh.setOnClickListener {
+            BankAppsManager.invalidateCache()
+            etSearch.text.clear()
+            loadApps()
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        scope = MainScope()
+        recyclerView.adapter = adapter
+        loadApps()
+    }
+
+    override fun onStop() {
+        scope?.cancel()
+        scope = null
+        loadJob = null
+        recyclerView.adapter = null
+        super.onStop()
+    }
+
+    private fun loadApps() {
+        val currentScope = scope ?: return
+        loadJob?.cancel()
+        recyclerView.visibility = View.GONE
+        etSearch.visibility = View.GONE
+        btnRefresh.visibility = View.GONE
+        tvLoading.text = "Загрузка..."
+        tvLoading.visibility = View.VISIBLE
+        val appContext = context.applicationContext
+        loadJob = currentScope.launch {
+            try {
+                val apps = withContext(Dispatchers.IO) {
+                    BankAppsManager.getAllInstalledApps(appContext)
+                        .filter { !BankAppsManager.isAppTracked(appContext, it.packageName) }
+                }
+                adapter.submitApps(apps, etSearch.text.toString())
+                tvLoading.visibility = View.GONE
+                etSearch.visibility = View.VISIBLE
+                btnRefresh.visibility = View.VISIBLE
+                recyclerView.visibility = View.VISIBLE
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                tvLoading.text = "Не удалось загрузить приложения. Повторите попытку."
+                btnRefresh.visibility = View.VISIBLE
+            }
+        }
     }
 
     private class AppsAdapter(
-        private val allApps: List<InstalledApp>,
+        private var allApps: List<InstalledApp>,
         private val onItemClick: (InstalledApp) -> Unit
     ) : RecyclerView.Adapter<AppsAdapter.ViewHolder>() {
 
@@ -115,6 +128,11 @@ class AppPickerDialog(
             val icon: ImageView = view.findViewById(R.id.iv_app_icon)
             val name: TextView = view.findViewById(R.id.tv_app_name)
             val packageName: TextView = view.findViewById(R.id.tv_package_name)
+        }
+
+        fun submitApps(apps: List<InstalledApp>, query: String) {
+            allApps = apps
+            filter(query)
         }
 
         fun filter(query: String) {

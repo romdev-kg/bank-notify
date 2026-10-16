@@ -9,6 +9,13 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28], application = android.app.Application::class)
 class AppLogTest {
+    @Test fun `exception details cannot leak credentials into diagnostic logs`() {
+        AppLog.clear()
+        AppLog.e("Delivery", "Отправка не удалась", IllegalStateException("https://api.telegram.org/botSECRET_TOKEN/sendMessage"))
+        assertFalse(AppLog.getLogsAsText().contains("SECRET_TOKEN"))
+        assertTrue(AppLog.getLogsAsText().contains("IllegalStateException"))
+    }
+
     @Test fun `skips are aggregated and cannot evict delivery errors`() {
         AppLog.clear()
         AppLog.e("Delivery", "Отправка не удалась")

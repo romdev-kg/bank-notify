@@ -25,6 +25,8 @@ class SettingsImportViewModel(application: Application) : AndroidViewModel(appli
 
     private val mutableState = MutableStateFlow(State.IDLE)
     val state = mutableState.asStateFlow()
+    var errorMessage = "Импорт не выполнен: проверьте файл и пароль"
+        private set
 
     fun import(uri: Uri, password: CharArray) {
         if (mutableState.value == State.RUNNING) {
@@ -50,14 +52,23 @@ class SettingsImportViewModel(application: Application) : AndroidViewModel(appli
                             output.toByteArray()
                         }
                     }, password = password, preferences = { AppSettings.preferences(context) }) {
-                        HealthcheckWorker.configure(context)
-                        RecoveryWork.start(context)
+                        try {
+                            HealthcheckWorker.configure(context)
+                            RecoveryWork.start(context)
+                            RecoveryWork.wakeDelivery(context)
+                        } catch (e: CancellationException) { throw e }
+                        catch (_: Exception) {
+                            // Settings are already committed. A scheduling failure must not report a bad backup/password.
+                            com.banknotify.AppLog.w("Import", "Настройки импортированы; восстановление доставки будет повторено")
+                        }
                     }
                 }
                 mutableState.value = State.SUCCESS
             } catch (e: CancellationException) {
                 throw e
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                errorMessage = if (e is com.banknotify.SettingsValidationException) e.message.orEmpty()
+                    else "Импорт не выполнен: проверьте файл и пароль"
                 mutableState.value = State.FAILURE
             } finally {
                 password.fill('\u0000')

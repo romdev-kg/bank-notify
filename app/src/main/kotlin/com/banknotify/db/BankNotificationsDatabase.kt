@@ -35,7 +35,7 @@ interface BankNotificationDao {
     suspend fun deleteOldNotifications(timestamp: Long)
 }
 
-@Database(entities = [BankNotification::class, OutboxMessage::class], version = 2, exportSchema = false)
+@Database(entities = [BankNotification::class, OutboxMessage::class], version = 3, exportSchema = false)
 abstract class BankNotificationsDatabase : RoomDatabase() {
     abstract fun notificationDao(): BankNotificationDao
     abstract fun outboxDao(): OutboxDao
@@ -47,16 +47,24 @@ abstract class BankNotificationsDatabase : RoomDatabase() {
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_telegram_outbox_eventKey ON telegram_outbox (eventKey)")
             }
         }
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE telegram_outbox ADD COLUMN retryAfterAt INTEGER NOT NULL DEFAULT 0")
+                // Version 2 stored only the Telegram deadline in nextAttemptAt.
+                db.execSQL("UPDATE telegram_outbox SET retryAfterAt = nextAttemptAt")
+            }
+        }
         @Volatile
         private var INSTANCE: BankNotificationsDatabase? = null
 
         fun getDatabase(context: Context): BankNotificationsDatabase {
             return INSTANCE ?: synchronized(this) {
+                INSTANCE?.let { return@synchronized it }
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     BankNotificationsDatabase::class.java,
                     "bank_notifications.db"
-                ).addMigrations(MIGRATION_1_2).build()
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
                 INSTANCE = instance
                 instance
             }

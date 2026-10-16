@@ -1,17 +1,50 @@
 package com.banknotify
 
+import android.app.ActivityManager
+import android.content.Context
+import android.os.Build
+import android.os.Process
 import android.util.Log
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.ArrayDeque
+import java.util.concurrent.Executors
 
 object AppLog {
     private const val TAG = "BankNotify"
-    private const val MAX_LOGS = 500
-
-    private val logs = ArrayDeque<LogEntry>()
+    private val executor = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "diagnostic-journal").apply { isDaemon = true }
+    }
+    private val journal = DiagnosticJournal(executor)
     private val skippedCounts = linkedMapOf<String, Long>()
+    private var initialized = false
+
+    @Synchronized
+    fun initialize(context: Context) {
+        if (initialized) return
+        initialized = true
+        val appContext = context.applicationContext
+        executor.execute {
+            try {
+                journal.initialize(File(appContext.noBackupFilesDir, "diagnostics.log"))
+            } catch (_: Exception) {
+                w("Process", "Постоянный журнал недоступен; события доступны за текущий сеанс")
+            }
+            i("Process", "Запуск PID=${Process.myPid()}, версия ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                try {
+                    val manager = appContext.getSystemService(ActivityManager::class.java)
+                    manager?.getHistoricalProcessExitReasons(appContext.packageName, 0, 1)?.firstOrNull()?.let { exit ->
+                        // Descriptions and traces may contain notification bodies or credentials.
+                        i("Process", "Предыдущее завершение: PID=${exit.pid}, reason=${exit.reason}, time=${exit.timestamp}")
+                    }
+                } catch (_: Exception) {
+                    w("Process", "Сведения о предыдущем завершении процесса недоступны")
+                }
+            }
+        }
+    }
 
     @Synchronized
     fun skipped(reason: String) {
@@ -25,7 +58,7 @@ object AppLog {
         val message: String
     ) {
         fun format(): String {
-            val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(timestamp))
+            val time = SimpleDateFormat("dd.MM HH:mm:ss", Locale.getDefault()).format(Date(timestamp))
             return "[$time] [$level] $tag: $message"
         }
     }
@@ -46,25 +79,18 @@ object AppLog {
     }
 
     fun e(tag: String, message: String, throwable: Throwable? = null) {
-        if (throwable != null) {
-            Log.e(TAG, "[$tag] $message", throwable)
-            addLog("E", tag, "$message: ${throwable.message}")
-        } else {
-            Log.e(TAG, "[$tag] $message")
-            addLog("E", tag, message)
-        }
+        val safeMessage = if (throwable == null) message else "$message (${throwable.javaClass.simpleName})"
+        Log.e(TAG, "[$tag] $safeMessage")
+        addLog("E", tag, safeMessage)
     }
 
     @Synchronized
     private fun addLog(level: String, tag: String, message: String) {
-        logs.add(LogEntry(System.currentTimeMillis(), level, tag, message))
-        while (logs.size > MAX_LOGS) {
-            logs.removeFirst()
-        }
+        journal.append(LogEntry(System.currentTimeMillis(), level, tag, message))
     }
 
     @Synchronized
-    fun getLogs(): List<LogEntry> = logs.toList().reversed()
+    fun getLogs(): List<LogEntry> = journal.snapshot().reversed()
 
     @Synchronized
     fun skippedSummary(): String = skippedCounts.entries.joinToString("; ") { "${it.key}: ${it.value}" }
@@ -78,6 +104,6 @@ object AppLog {
     @Synchronized
     fun clear() {
         skippedCounts.clear()
-        logs.clear()
+        journal.clear()
     }
 }

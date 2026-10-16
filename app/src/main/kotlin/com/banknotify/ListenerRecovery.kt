@@ -1,5 +1,8 @@
 package com.banknotify
 
+import android.app.NotificationManager
+import android.os.Build
+import android.os.SystemClock
 import android.content.ComponentName
 import android.content.Context
 import android.provider.Settings
@@ -12,8 +15,16 @@ object ListenerRecovery {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var loop: ListenerReconnectLoop? = null
 
+    private val connectionState = ListenerConnectionState()
+
+    internal fun status(context: Context): ListenerStatus = connectionState.update(
+        hasAccess(context), BankNotificationListener.isConnected, SystemClock.elapsedRealtime())
+
     fun hasAccess(context: Context): Boolean {
         val component = ComponentName(context, BankNotificationListener::class.java)
+        if (Build.VERSION.SDK_INT >= 27) {
+            return context.getSystemService(NotificationManager::class.java).isNotificationListenerAccessGranted(component)
+        }
         return Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")
             ?.split(':')?.mapNotNull(ComponentName::unflattenFromString)?.contains(component) == true
     }
@@ -21,6 +32,7 @@ object ListenerRecovery {
     fun ensureConnected(context: Context) {
         val app = context.applicationContext
         scope.launch {
+            status(app)
             if (BankNotificationListener.isConnected || !hasAccess(app)) {
                 loop?.stop()
                 return@launch
@@ -29,7 +41,7 @@ object ListenerRecovery {
                 loop = ListenerReconnectLoop(scope, { hasAccess(app) && !BankNotificationListener.isConnected }) {
                     try {
                         NotificationListenerService.requestRebind(ComponentName(app, BankNotificationListener::class.java))
-                        AppLog.i("Listener", "Запрошено переподключение к системе")
+                        AppLog.i("Listener", "Запрос подключения отправлен; ждём подтверждения системы")
                     } catch (_: Exception) {
                         AppLog.w("Listener", "Не удалось запросить подключение; будет повтор")
                     }
@@ -39,7 +51,7 @@ object ListenerRecovery {
         }
     }
 
-    fun connected() { scope.launch { loop?.stop() } }
+    fun connected() { scope.launch { connectionState.update(true, true, SystemClock.elapsedRealtime()); loop?.stop() } }
 
     fun schedule(context: Context) {
         ensureConnected(context)

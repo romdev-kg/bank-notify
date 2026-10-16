@@ -5,8 +5,6 @@ import android.content.SharedPreferences
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 
 data class BankApp(
     val packageName: String,
@@ -24,22 +22,7 @@ object BankAppsManager {
 
     private const val CUSTOM_APPS_KEY = "custom_apps"
     private var cachedApps: List<InstalledApp>? = null
-    private var cachedPrefs: SharedPreferences? = null
-
-    private fun getPrefs(context: Context): SharedPreferences {
-        cachedPrefs?.let { return it }
-        val prefs = EncryptedSharedPreferences.create(
-            context,
-            "bank_notify",
-            MasterKey.Builder(context)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build(),
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
-        cachedPrefs = prefs
-        return prefs
-    }
+    private fun getPrefs(context: Context): SharedPreferences = AppSettings.preferences(context)
 
     /**
      * Возвращает список выбранных пользователем приложений
@@ -49,7 +32,7 @@ object BankAppsManager {
         val customAppsString = prefs.getString(CUSTOM_APPS_KEY, "") ?: ""
         if (customAppsString.isEmpty()) return emptyList()
 
-        val pm = context.packageManager
+        val pm = context.applicationContext.packageManager
         return customAppsString.split(",").mapNotNull { packageName ->
             try {
                 val appInfo = pm.getApplicationInfo(packageName, 0)
@@ -127,7 +110,7 @@ object BankAppsManager {
     fun getAllInstalledApps(context: Context): List<InstalledApp> {
         cachedApps?.let { return it }
 
-        val pm = context.packageManager
+        val pm = context.applicationContext.packageManager
         val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
             .filter { appInfo ->
                 (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) == 0

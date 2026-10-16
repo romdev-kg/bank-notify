@@ -48,6 +48,7 @@ class BankNotificationListener : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         sbn ?: return
 
+        if (AppSettings.available(applicationContext) == null) return
         val packageName = sbn.packageName
 
         // Проверяем есть ли приложение в списке отслеживаемых и включено ли оно
@@ -83,7 +84,7 @@ class BankNotificationListener : NotificationListenerService() {
         val amount = payment.amount
         val sender = payment.sender
 
-        AppLog.i(TAG, "Найдено: $amount руб. от ${sender ?: "неизвестно"} ($appName)")
+        AppLog.i(TAG, "Распознан входящий платёж")
 
         RecoveryWork.intakeScope.launch {
             try {

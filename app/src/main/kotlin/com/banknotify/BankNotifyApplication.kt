@@ -9,14 +9,24 @@ import java.util.concurrent.TimeUnit
 class BankNotifyApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        AppLog.initialize(this)
         RecoveryWork.start(this)
-        HealthcheckWorker.configure(this)
+        RecoveryWork.intakeScope.launch { HealthcheckWorker.configure(this@BankNotifyApplication) }
     }
 }
 
 object RecoveryWork {
     // Intake persistence must outlive the listener instance, so onDestroy cannot cancel it.
     val intakeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    fun wakeDelivery(context: Context) {
+        val app = context.applicationContext
+        intakeScope.launch {
+            try { DeliveryQueue.wake(app) }
+            catch (e: CancellationException) { throw e }
+            catch (_: Exception) { AppLog.w("Queue", "Очередь будет восстановлена фоновым заданием") }
+        }
+    }
 
     fun start(context: Context) {
         ListenerRecovery.schedule(context)

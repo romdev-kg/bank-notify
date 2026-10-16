@@ -21,7 +21,7 @@ class DiagnosticsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         title = "Диагностика"
-        val prefs = AppSettings.preferences(this)
+        val prefs = AppSettings.available(this)
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             val padding = (20 * resources.displayMetrics.density).toInt()
@@ -48,18 +48,22 @@ class DiagnosticsActivity : AppCompatActivity() {
         })
         val enabled = Switch(this).apply {
             text = "Включить healthcheck"
-            isChecked = prefs.getBoolean("healthcheck_enabled", false)
+            isChecked = prefs?.getBoolean("healthcheck_enabled", false) == true
         }
         val url = EditText(this).apply {
             hint = "https://…/ping/…"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-            setText(prefs.getString("healthcheck_url", ""))
+            setText(prefs?.getString("healthcheck_url", ""))
         }
         layout.addView(enabled)
         layout.addView(url)
         layout.addView(Button(this).apply {
             text = "Сохранить healthcheck"
             setOnClickListener {
+                if (prefs == null) {
+                    Toast.makeText(this@DiagnosticsActivity, "Настройки недоступны; повторно откройте приложение", Toast.LENGTH_LONG).show()
+                    return@setOnClickListener
+                }
                 val value = url.text.toString().trim()
                 if ((enabled.isChecked || value.isNotEmpty()) && !HealthcheckPolicy.validUrl(value)) {
                     url.error = "Укажите корректный HTTPS URL без логина и пароля"
@@ -78,18 +82,22 @@ class DiagnosticsActivity : AppCompatActivity() {
 
     private fun refresh() {
         lifecycleScope.launch {
-            val prefs = AppSettings.preferences(this@DiagnosticsActivity)
-            val pending = BankNotificationsDatabase.getDatabase(this@DiagnosticsActivity).outboxDao().pendingCount()
+            val prefs = AppSettings.available(this@DiagnosticsActivity)
+            val dao = BankNotificationsDatabase.getDatabase(this@DiagnosticsActivity).outboxDao()
+            val pending = dao.pendingCount()
+            val error = dao.latestPendingError()
             val sms = ContextCompat.checkSelfPermission(this@DiagnosticsActivity, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
             val power = getSystemService(PowerManager::class.java)
             status.text = buildString {
                 appendLine("Доступ к уведомлениям: ${if (ListenerRecovery.hasAccess(this@DiagnosticsActivity)) "есть" else "нет"}")
-                appendLine("Сервис: ${if (BankNotificationListener.isConnected) "подключён" else "не подключён"}")
-                appendLine("Приём SMS: ${if (prefs.getBoolean("sms_enabled", false)) "включён" else "выключен"}")
+                appendLine("Сервис: ${ListenerRecovery.status(this@DiagnosticsActivity).label}")
+                if (prefs == null) appendLine("Защищённые настройки недоступны. Данные не удалены.")
+                appendLine("Приём SMS: ${if (prefs?.getBoolean("sms_enabled", false) == true) "включён" else "выключен"}")
                 appendLine("Разрешение SMS: ${if (sms) "есть" else "нет"}")
                 appendLine("Ограничения батареи: ${if (power.isIgnoringBatteryOptimizations(packageName)) "сняты" else "действуют"}")
                 appendLine("Ожидают доставки: $pending")
-                appendLine("Healthcheck: ${if (prefs.getBoolean("healthcheck_enabled", false)) prefs.getString("healthcheck_status", "ожидает запуска") else "выключен"}")
+                if (error != null) appendLine("Последняя ошибка доставки: $error")
+                appendLine("Healthcheck: ${if (prefs?.getBoolean("healthcheck_enabled", false) == true) prefs?.getString("healthcheck_status", "ожидает запуска") else "выключен"}")
                 appendLine("Пропущено за сеанс: ${AppLog.skippedSummary().ifEmpty { "0" }}")
             }
         }

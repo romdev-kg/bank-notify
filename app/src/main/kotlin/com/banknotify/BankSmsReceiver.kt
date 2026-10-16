@@ -4,8 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.provider.Telephony
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.launch
 
 class BankSmsReceiver : BroadcastReceiver() {
@@ -75,20 +73,7 @@ class BankSmsReceiver : BroadcastReceiver() {
     }
 
     private fun isSmsEnabled(context: Context): Boolean {
-        return try {
-            val prefs = EncryptedSharedPreferences.create(
-                context,
-                "bank_notify",
-                MasterKey.Builder(context)
-                    .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                    .build(),
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
-            prefs.getBoolean("sms_enabled", false)
-        } catch (e: Exception) {
-            false
-        }
+        return AppSettings.available(context)?.getBoolean("sms_enabled", false) == true
     }
 
     data class ParsedSms(

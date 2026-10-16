@@ -11,6 +11,7 @@ data class OutboxMessage(
     val sent: Boolean = false,
     val attempts: Int = 0,
     val nextAttemptAt: Long = 0,
+    @ColumnInfo(defaultValue = "0") val retryAfterAt: Long = 0,
     val lastError: String? = null
 )
 
@@ -31,12 +32,18 @@ interface OutboxDao {
     @Query("SELECT EXISTS(SELECT 1 FROM telegram_outbox WHERE sent = 0 AND (attempts > 0 OR createdAt < :before))")
     suspend fun hasDeliveryProblems(before: Long): Boolean
 
+    @Query("SELECT lastError FROM telegram_outbox WHERE sent = 0 AND lastError IS NOT NULL ORDER BY id DESC LIMIT 1")
+    suspend fun latestPendingError(): String?
+
     @Query("SELECT * FROM telegram_outbox ORDER BY id DESC LIMIT 100")
     suspend fun recent(): List<OutboxMessage>
 
-    @Query("UPDATE telegram_outbox SET sent = 1, lastError = NULL, nextAttemptAt = 0 WHERE id = :id")
+    @Query("UPDATE telegram_outbox SET sent = 1, lastError = NULL, nextAttemptAt = 0, retryAfterAt = 0 WHERE id = :id")
     suspend fun markSent(id: Long)
 
-    @Query("UPDATE telegram_outbox SET attempts = attempts + 1, lastError = :error, nextAttemptAt = :retryAt WHERE id = :id")
-    suspend fun failed(id: Long, error: String, retryAt: Long)
+    @Query("UPDATE telegram_outbox SET nextAttemptAt = :retryAt WHERE id = :id")
+    suspend fun reschedule(id: Long, retryAt: Long)
+
+    @Query("UPDATE telegram_outbox SET attempts = attempts + 1, lastError = :error, nextAttemptAt = :retryAt, retryAfterAt = :serverRetryAt WHERE id = :id")
+    suspend fun failed(id: Long, error: String, retryAt: Long, serverRetryAt: Long)
 }

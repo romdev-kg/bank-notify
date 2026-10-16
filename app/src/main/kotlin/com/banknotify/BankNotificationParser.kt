@@ -15,6 +15,11 @@ object BankNotificationParser {
         """(?<![\p{L}\p{N}_])(?:покупка|списание|списано|списаны|исходящий|отправлено|отправлен|переведено|получателю)(?![\p{L}\p{N}_])""",
         RegexOption.IGNORE_CASE
     )
+    private val sentToYou = Regex(
+        """(?<![\p{L}\p{N}_])(?:вам\s+(?:отправлен|отправлено|переведено)|(?:отправлен|отправлено|переведено)\s+вам)(?![\p{L}\p{N}_])""",
+        RegexOption.IGNORE_CASE
+    )
+    private val comment = Regex("""(?<![\p{L}\p{N}_])(?:сообщение|комментарий)\s*:""", RegexOption.IGNORE_CASE)
     private val balance = Regex("""(?<![\p{L}\p{N}_])(?:баланс|остаток|доступно)(?![\p{L}\p{N}_])""", RegexOption.IGNORE_CASE)
     // Capture the whole numeric token, including malformed separators, so a suffix is never a payment.
     private val number = Regex("""(?<![\p{L}\d.,])([+＋\-−]? *[0-9][0-9., ]*)""")
@@ -22,22 +27,31 @@ object BankNotificationParser {
     private val currencyAfter = Regex("""^\s*$RUBLES""", RegexOption.IGNORE_CASE)
     private val currencyBefore = Regex("""(?<!\p{L})$RUBLES\s*$""", RegexOption.IGNORE_CASE)
     private val foreignCurrency = Regex("""^\s*(?:EUR|USD|GBP|CNY|KZT|BYN|€|\$|£)(?!\p{L})""", RegexOption.IGNORE_CASE)
-    private val account = Regex("""(?:MIR|VISA|MC|MAESTRO)-(\d{4})|\*(\d{4})""", RegexOption.IGNORE_CASE)
+    private val account = Regex("""(?:(?:MIR|VISA|MC|MAESTRO)-(\d{4})|\*(\d{4}))(?!\d)""", RegexOption.IGNORE_CASE)
+    private val time = Regex("""(?<![\p{L}\d])\d{1,2}:\d{2}(?::\d{2})?(?!\d)""")
     private val sender = Regex(
         """(?<!\p{L})(?:от\s+|СБП[.\s]+)([А-ЯЁа-яё]+(?:\s+(?!из(?!\p{L}))[А-ЯЁа-яё]+\.?){1,2})""",
         RegexOption.IGNORE_CASE
     )
 
     fun parse(text: String, title: String = ""): Payment? {
-        val fullText = normalizeSpaces("$title $text").trim()
-        if (outgoing.containsMatchIn(fullText)) return null
+        // An explicitly labelled sender message is payload, never evidence of an operation or amount.
+        val transactionText = withoutComment(normalizeSpaces("$title $text").trim())
+        val incomingPhrases = sentToYou.findAll(transactionText).map { it.range }.toList()
+        if (outgoing.findAll(transactionText).any { word ->
+            incomingPhrases.none { word.range.first in it && word.range.last in it }
+        }) return null
+        // Mask metadata before scanning: otherwise card digits merge with the amount and time
+        // prefixes look like currency-less payments. Keep separators so distinct numbers cannot join.
+        val fullText = withoutMetadata(transactionText)
         val operation = income.find(fullText)
         // Discard the balance section, but allow an operation appearing after an earlier balance.
         val start = operation?.range?.first ?: 0
         val end = balance.find(fullText, start)?.range?.first ?: fullText.length
         val operationText = fullText.substring(start, end)
         // Some banks put only the amount in the title and the operation/sender in the body.
-        val titleAmount = normalizeSpaces(title).takeIf { it.isNotBlank() && !balance.containsMatchIn(it) }
+        val titleAmount = withoutMetadata(withoutComment(normalizeSpaces(title)))
+            .takeIf { it.isNotBlank() && !balance.containsMatchIn(it) }
         // An amount can also immediately precede the operation: "500 ₽ — перевод от ...".
         // Only use that adjacent amount, never an earlier balance or an unrelated earlier number.
         val prefix = fullText.substring(0, start)
@@ -66,12 +80,18 @@ object BankNotificationParser {
             if (!hasCurrency && !signedPayment && !followsOperation) continue
             // A recognized payment position with an invalid amount must not fall through to another number.
             val amount = formatAmount(raw) ?: return null
-            return Payment(amount, sender.find(fullText)?.groupValues?.get(1)?.trim(), operation?.value ?: "Зачисление")
+            return Payment(amount, sender.find(transactionText)?.groupValues?.get(1)?.trim(), operation?.value ?: "Зачисление")
         }
         return null
     }
 
     fun card(text: String): String = account.find(text)?.value ?: "????"
+
+    private fun withoutComment(text: String): String =
+        text.substring(0, comment.find(text)?.range?.first ?: text.length)
+
+    private fun withoutMetadata(text: String): String =
+        time.replace(account.replace(text) { "_".repeat(it.value.length) }) { "_".repeat(it.value.length) }
 
     private fun normalizeSpaces(text: String): String = buildString(text.length) {
         for (char in text) append(if (char.isWhitespace() || Character.isSpaceChar(char)) ' ' else char)

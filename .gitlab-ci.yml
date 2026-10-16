@@ -55,6 +55,7 @@ release-apk:
     - trap 'rm -f app/banknotify-release.jks' EXIT
     - printf '%s' "$KEYSTORE_BASE64" | base64 --decode > app/banknotify-release.jks
     - bash gradlew assembleRelease --no-daemon --console=plain
+    - bash ci/verify-signature.sh app/build/outputs/apk/release/app-release.apk
     - python3 ci/package-apk.py release
   artifacts:
     expire_in: 90 days

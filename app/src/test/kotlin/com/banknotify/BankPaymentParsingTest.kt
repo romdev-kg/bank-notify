@@ -88,4 +88,63 @@ class BankPaymentParsingTest {
     @Test fun `masked account is not inferred from payment amount`() {
         assertEquals("5678", BankNotificationParser.parseSber("Зачисление 1000 ₽ на *5678", "")?.accountNumber)
     }
+
+    @Test fun `time is metadata rather than a payment amount`() {
+        for (text in listOf(
+            "Зачисление 14:05 500р",
+            "Зачисление 14:05:32 500 ₽",
+            "14:05 Зачисление 500 ₽",
+            "Зачисление 14:05. Сумма: 500 ₽"
+        )) assertEquals(text, "500", amount(text))
+        assertNull(amount("Зачисление 14:05"))
+        assertNull(amount("Зачисление 14:05. Баланс 500 ₽"))
+    }
+
+    @Test fun `account digits adjacent to an amount do not merge with it`() {
+        for (text in listOf(
+            "Пополнение MIR-2923 500р",
+            "Пополнение VISA-2923 500р",
+            "Зачисление на счёт *1234 500 ₽",
+            "Пополнение MIR-2923 500р. Баланс 10000 ₽"
+        )) assertEquals(text, "500", amount(text))
+        assertEquals("1500,50", amount("Зачисление на счёт *1234 1\u202f500,50 ₽"))
+        assertNull(amount("Пополнение MIR-2923. Баланс 500 ₽"))
+        assertNull(amount("Зачисление на счёт *1234567 500 ₽"))
+    }
+
+    @Test fun `sent to you describes an incoming transfer`() {
+        assertEquals("500", amount("Вам отправлен перевод 500 ₽"))
+        assertEquals("500", amount("Вам отправлено переводом 500 ₽", "Перевод"))
+        assertEquals("500", amount("Перевод 500 ₽ отправлен вам"))
+        assertEquals("500", amount("Вам переведено 500 ₽", "Зачисление"))
+        assertNull(amount("Вами отправлен перевод 500 ₽"))
+        assertNull(amount("Отправлен перевод 500 ₽"))
+        assertNull(amount("Вам отправлен перевод 500 ₽ получателю Иван И."))
+    }
+
+    @Test fun `sender comment does not control operation direction or amount`() {
+        for (text in listOf(
+            "Перевод 500 ₽ от Иван И. Сообщение: отправлено получателю",
+            "Зачисление 500 ₽. Комментарий: покупка подарка",
+            "Перевод 500 ₽ от Иван И. Сообщение: списано 1000 ₽",
+            "Вам отправлен перевод 500 ₽. Сообщение: исходящий перевод"
+        )) assertEquals(text, "500", amount(text))
+        for (text in listOf(
+            "Исходящий перевод 500 ₽. Сообщение: зачисление",
+            "Перевод 500 ₽ получателю Иван И. Комментарий: подарок",
+            "Сообщение: Зачисление 500 ₽",
+            "Перевод от Иван И. Сообщение: зачисление 500 ₽",
+            "Сообщение о переводе: списано 500 ₽"
+        )) assertNull(text, amount(text))
+        assertNull(amount("", "Сообщение: +500 ₽"))
+    }
+
+    @Test fun `metadata skipping does not rescue malformed or foreign payment amounts`() {
+        for (text in listOf(
+            "Зачисление 14:05 1 00 ₽",
+            "Пополнение MIR-2923 1,00.50 ₽",
+            "Зачисление на счёт *1234 500 EUR. Баланс 1000 ₽",
+            "Зачисление 14:05 500 EUR. Баланс 1000 ₽"
+        )) assertNull(text, amount(text))
+    }
 }

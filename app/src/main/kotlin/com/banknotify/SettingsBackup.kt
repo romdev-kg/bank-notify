@@ -10,6 +10,8 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
 
+internal class SettingsValidationException(message: String) : IllegalArgumentException(message)
+
 internal object SettingsBackup {
     const val MAX_BYTES = 1_048_576
     private val stringKeys = setOf("telegram_token", "telegram_chat_id", "telegram_proxy", "custom_apps", "healthcheck_url")
@@ -19,15 +21,19 @@ internal object SettingsBackup {
 
     fun isSetting(key: String): Boolean = key in stringKeys || key in booleanKeys || appKey.matches(key)
 
+    private inline fun validateField(condition: Boolean, message: () -> String) {
+        if (!condition) throw SettingsValidationException(message())
+    }
+
     private fun validate(settings: Map<String, Any>) {
-        require(settings.size <= 1000) { "Слишком много настроек" }
+        validateField(settings.size <= 1000) { "Слишком много настроек" }
         for ((key, value) in settings) {
-            require(isSetting(key)) { "Неизвестная настройка" }
-            require(if (key in stringKeys) value is String else value is Boolean) { "Неверный тип настройки" }
-            if (value is String) require(value.length <= 65_536) { "Слишком длинная настройка" }
+            validateField(isSetting(key)) { "Неизвестная настройка" }
+            validateField(if (key in stringKeys) value is String else value is Boolean) { "Неверный тип настройки" }
+            if (value is String) validateField(value.length <= 65_536) { "Слишком длинная настройка" }
         }
         val url = settings["healthcheck_url"] as? String ?: ""
-        require((url.isEmpty() && settings["healthcheck_enabled"] != true) || HealthcheckPolicy.validUrl(url)) {
+        validateField((url.isEmpty() && settings["healthcheck_enabled"] != true) || HealthcheckPolicy.validUrl(url)) {
             "Некорректный healthcheck URL"
         }
     }

@@ -5,6 +5,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SettingsBackupTest {
+    @Test fun `legacy proxy settings round trip while form validation still explains the bad line`() {
+        val values = mapOf("telegram_proxy" to "http://working:8080\nsocks5://alice:secret@legacy:1080")
+        val bytes = SettingsBackup.encode(values, "long password".toCharArray())
+        assertEquals(values, SettingsBackup.decode(bytes, "long password".toCharArray()))
+        val error = TelegramProxyConfig.validationError(values.getValue("telegram_proxy")).orEmpty()
+        assertTrue(error.contains("строка 2"))
+        assertFalse(error.contains("alice"))
+        assertFalse(error.contains("secret"))
+    }
     private val password = "long password".toCharArray()
     private val settings = mapOf<String, Any>("telegram_token" to "secret-token", "telegram_chat_id" to "-100123",
         "telegram_proxy" to "http://user:pass@proxy:8080\nsocks5://backup:1080", "sms_enabled" to true,

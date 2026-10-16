@@ -18,8 +18,13 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
+import com.banknotify.RecoveryWork
+import com.banknotify.AppSettings
+import com.banknotify.DeliveryQueue
+import com.banknotify.TelegramProxyConfig
+import com.banknotify.ListenerRecovery
+import com.banknotify.ListenerStatus
+import kotlinx.coroutines.CancellationException
 import com.banknotify.AppLog
 import com.banknotify.BankAppsManager
 import com.banknotify.BankNotificationListener
@@ -45,13 +50,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var appsContainer: LinearLayout
     private lateinit var tvNoApps: TextView
     private lateinit var switchSms: SwitchMaterial
+    private var settingsReady = false
+    private var updatingSms = false
 
     private val smsPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
+        if (!settingsReady) return@registerForActivityResult
         if (granted) {
             setSmsEnabled(true)
-            switchSms.isChecked = true
+            updateSmsSwitch(true)
             AppLog.i("MainActivity", "SMS разрешение получено")
         } else {
             AppLog.w("MainActivity", "SMS разрешение отклонено")
@@ -77,35 +85,22 @@ class MainActivity : AppCompatActivity() {
         appsContainer = findViewById(R.id.apps_container)
         tvNoApps = findViewById(R.id.tv_no_apps)
 
-        val prefs = EncryptedSharedPreferences.create(
-            this,
-            "bank_notify",
-            MasterKey.Builder(this)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build(),
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
+        val prefs = AppSettings.available(this)
+        if (prefs == null) {
+            showSettingsUnavailable()
+            return
+        }
+        settingsReady = true
 
         // Загружаем сохранённые или дефолтные значения
         val savedToken = prefs.getString("telegram_token", "")
         val savedChatId = prefs.getString("telegram_chat_id", "")
         val savedProxy = prefs.getString(TelegramSender.PREF_TELEGRAM_PROXY, "")
 
-        if (savedToken.isNullOrEmpty()) {
-            etToken.setText(TelegramSender.DEFAULT_TOKEN)
-            etChatId.setText(TelegramSender.DEFAULT_CHAT_ID)
-            etProxy.setText(savedProxy)
-            // Сохраняем дефолтные значения
-            prefs.edit()
-                .putString("telegram_token", TelegramSender.DEFAULT_TOKEN)
-                .putString("telegram_chat_id", TelegramSender.DEFAULT_CHAT_ID)
-                .apply()
-        } else {
-            etToken.setText(savedToken)
-            etChatId.setText(savedChatId)
-            etProxy.setText(savedProxy)
-        }
+        etToken.setText(savedToken)
+        etChatId.setText(savedChatId)
+        etProxy.setText(savedProxy)
+        etProxy.error = TelegramProxyConfig.validationError(savedProxy.orEmpty())
 
         // Загружаем выбранные приложения
         refreshAppsList()
@@ -122,13 +117,14 @@ class MainActivity : AppCompatActivity() {
         switchSms = findViewById(R.id.switch_sms)
         switchSms.isChecked = isSmsEnabled()
         switchSms.setOnCheckedChangeListener { _, isChecked ->
+            if (updatingSms) return@setOnCheckedChangeListener
             if (isChecked) {
                 if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECEIVE_SMS)
                     == PackageManager.PERMISSION_GRANTED
                 ) {
                     setSmsEnabled(true)
                 } else {
-                    switchSms.isChecked = false
+                    updateSmsSwitch(false)
                     smsPermissionLauncher.launch(Manifest.permission.RECEIVE_SMS)
                 }
             } else {
@@ -165,6 +161,11 @@ class MainActivity : AppCompatActivity() {
             val token = etToken.text.toString().trim()
             val chatId = etChatId.text.toString().trim()
             val proxy = etProxy.text.toString().trim()
+            TelegramProxyConfig.validationError(proxy)?.let {
+                etProxy.error = it
+                return@setOnClickListener
+            }
+            etProxy.error = null
 
             if (token.isNotEmpty() && chatId.isNotEmpty()) {
                 prefs.edit()
@@ -172,6 +173,7 @@ class MainActivity : AppCompatActivity() {
                     .putString("telegram_chat_id", chatId)
                     .putString(TelegramSender.PREF_TELEGRAM_PROXY, proxy)
                     .apply()
+                wakeDelivery()
                 Toast.makeText(this, "Сохранено!", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(this, "Заполните все поля!", Toast.LENGTH_SHORT).show()
@@ -182,6 +184,11 @@ class MainActivity : AppCompatActivity() {
             val token = etToken.text.toString().trim()
             val chatId = etChatId.text.toString().trim()
             val proxy = etProxy.text.toString().trim()
+            TelegramProxyConfig.validationError(proxy)?.let {
+                etProxy.error = it
+                return@setOnClickListener
+            }
+            etProxy.error = null
 
             if (token.isEmpty() || chatId.isEmpty()) {
                 Toast.makeText(this, "Сначала заполните и сохраните настройки", Toast.LENGTH_SHORT).show()
@@ -195,20 +202,19 @@ class MainActivity : AppCompatActivity() {
                 .apply()
 
             btnTest.isEnabled = false
-            val database = BankNotificationsDatabase.getDatabase(this)
-            val sender = TelegramSender(this, database.notificationDao())
-
             scope.launch {
-                val success = withContext(Dispatchers.IO) {
-                    sender.sendTest()
-                }
-
-                btnTest.isEnabled = true
-                if (success) {
-                    Toast.makeText(this@MainActivity, "Тестовое сообщение отправлено!", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(this@MainActivity, "Ошибка отправки. Проверьте токен, Chat ID и прокси", Toast.LENGTH_SHORT).show()
-                }
+                try {
+                    val success = withContext(Dispatchers.IO) {
+                        TelegramSender(applicationContext, BankNotificationsDatabase.getDatabase(applicationContext).notificationDao()).sendTest()
+                    }
+                    if (success) wakeDelivery()
+                    Toast.makeText(this@MainActivity, if (success) "Тестовое сообщение отправлено!"
+                        else "Ошибка отправки. Проверьте токен, Chat ID и прокси", Toast.LENGTH_LONG).show()
+                } catch (e: CancellationException) { throw e }
+                catch (_: Exception) {
+                    AppLog.w("Test", "Не удалось выполнить тест; проверьте настройки")
+                    Toast.makeText(this@MainActivity, "Не удалось выполнить тест. Откройте диагностику.", Toast.LENGTH_LONG).show()
+                } finally { btnTest.isEnabled = true }
             }
         }
     }
@@ -248,6 +254,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (!settingsReady) return
         statusHandler.removeCallbacks(statusRefresh)
         statusHandler.post(statusRefresh)
         val tvStatus = findViewById<TextView>(R.id.tv_status)
@@ -256,7 +263,7 @@ class MainActivity : AppCompatActivity() {
         ensureListenerConnected()
         // Обновить состояние SMS switch (разрешение могло измениться в настройках)
         val hasPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
-        switchSms.isChecked = hasPermission && isSmsEnabled()
+        updateSmsSwitch(hasPermission && isSmsEnabled())
     }
 
     private fun ensureListenerConnected() {
@@ -277,42 +284,41 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateStatus(tvStatus: TextView, statusIndicator: View) {
-        when {
-            !hasNotificationAccess() -> {
-                tvStatus.text = "Нет разрешения"
-                statusIndicator.setBackgroundResource(R.drawable.status_indicator_off)
-            }
-            BankNotificationListener.isConnected -> {
-                tvStatus.text = "Активен"
-                statusIndicator.setBackgroundResource(R.drawable.status_indicator_on)
-            }
-            else -> {
-                tvStatus.text = "Подключение..."
-                statusIndicator.setBackgroundResource(R.drawable.status_indicator_off)
-            }
-        }
+        val state = ListenerRecovery.status(this)
+        tvStatus.text = state.label
+        statusIndicator.setBackgroundResource(if (state == ListenerStatus.CONNECTED)
+            R.drawable.status_indicator_on else R.drawable.status_indicator_off)
     }
 
-    private fun hasNotificationAccess(): Boolean = com.banknotify.ListenerRecovery.hasAccess(this)
-
-    private fun isSmsEnabled(): Boolean {
-        val prefs = EncryptedSharedPreferences.create(
-            this, "bank_notify",
-            MasterKey.Builder(this).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
-        return prefs.getBoolean("sms_enabled", false)
-    }
+    private fun isSmsEnabled(): Boolean = AppSettings.preferences(this).getBoolean("sms_enabled", false)
 
     private fun setSmsEnabled(enabled: Boolean) {
-        val prefs = EncryptedSharedPreferences.create(
-            this, "bank_notify",
-            MasterKey.Builder(this).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
-        prefs.edit().putBoolean("sms_enabled", enabled).apply()
+        AppSettings.preferences(this).edit().putBoolean("sms_enabled", enabled).apply()
+    }
+
+    private fun updateSmsSwitch(checked: Boolean) {
+        updatingSms = true
+        try { switchSms.isChecked = checked } finally { updatingSms = false }
+    }
+
+    private fun wakeDelivery() = RecoveryWork.wakeDelivery(applicationContext)
+
+    private fun showSettingsUnavailable() {
+        setContentView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val padding = (24 * resources.displayMetrics.density).toInt()
+            setPadding(padding, padding, padding, padding)
+            addView(TextView(this@MainActivity).apply {
+                text = "Не удалось открыть защищённые настройки. Данные не удалены. Разблокируйте телефон и повторите попытку. Если ошибка остаётся, откройте журнал."
+                textSize = 18f
+            })
+            addView(Button(this@MainActivity).apply { text = "Повторить"; setOnClickListener { recreate() } })
+            addView(Button(this@MainActivity).apply {
+                text = "Открыть журнал"
+                setOnClickListener { startActivity(Intent(this@MainActivity, LogsActivity::class.java)) }
+            })
+        })
+        applySystemInsets()
     }
 
     override fun onDestroy() {

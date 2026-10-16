@@ -30,6 +30,7 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > app/banknotify-release.jks
           bash gradlew testDebugUnitTest lintDebug assembleDebug assembleRelease --no-daemon
           python3 ci/package-apk.py debug
+          bash ci/verify-signature.sh app/build/outputs/apk/release/app-release.apk
           python3 ci/package-apk.py release
       - uses: actions/upload-artifact@v7.0.2
         with:

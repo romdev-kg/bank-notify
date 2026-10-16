@@ -33,7 +33,7 @@ class SettingsTransfer(private val activity: AppCompatActivity) {
                         }
                         SettingsImportViewModel.State.FAILURE -> {
                             importModel.consumeResult()
-                            Toast.makeText(activity, "Импорт не выполнен: проверьте файл и пароль", Toast.LENGTH_LONG).show()
+                            Toast.makeText(activity, importModel.errorMessage, Toast.LENGTH_LONG).show()
                         }
                         else -> Unit
                     }
