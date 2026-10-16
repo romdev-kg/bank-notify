@@ -21,7 +21,7 @@ Android app (Kotlin) that intercepts bank push notifications via `NotificationLi
 
 ```
 Bank notification / SMS → shared BankNotificationParser
-  → Room transaction: history + persistent OutboxMessage
+  → Room: persistent OutboxMessage
   → DeliveryWorker → TelegramSender → ordered proxy failover → Telegram Bot API
   → mark delivered only after Telegram confirms message_id
   → failures remain queued; WorkManager retries with backoff and retry_after
@@ -38,7 +38,7 @@ Bank notification / SMS → shared BankNotificationParser
 ### Storage
 
 - **Credentials**: `EncryptedSharedPreferences` (AES256, key alias `bank_notify`)
-- **Transaction history**: Room database (`BankNotificationsDatabase`), `BankNotification` history and `OutboxMessage` delivery queue (schema v2)
+- **Storage**: Room database (`BankNotificationsDatabase`), legacy `BankNotification` history and active `OutboxMessage` delivery queue (schema v2). Production intake currently writes only the outbox; raw notification text is not persisted.
 - **App tracking config**: `EncryptedSharedPreferences` via `BankAppsManager`
 
 ## Project Conventions
