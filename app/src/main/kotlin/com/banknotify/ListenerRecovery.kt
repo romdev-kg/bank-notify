@@ -5,6 +5,7 @@ import android.os.Build
 import android.os.SystemClock
 import android.content.ComponentName
 import android.content.Context
+import android.content.pm.PackageManager
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import androidx.work.*
@@ -41,13 +42,49 @@ object ListenerRecovery {
                 loop = ListenerReconnectLoop(scope, { hasAccess(app) && !BankNotificationListener.isConnected }) {
                     try {
                         NotificationListenerService.requestRebind(ComponentName(app, BankNotificationListener::class.java))
-                        AppLog.i("Listener", "Запрос подключения отправлен; ждём подтверждения системы")
+                        AppLog.i("Listener", "Вызван requestRebind; подтверждения системы пока нет")
                     } catch (_: Exception) {
                         AppLog.w("Listener", "Не удалось запросить подключение; будет повтор")
                     }
+                    status(app)
+                    toggleIfStalled(app)
                 }
             }
             loop?.start()
+        }
+    }
+
+    private fun toggleIfStalled(app: Context) {
+        val now = SystemClock.elapsedRealtime()
+        val prefs = app.getSharedPreferences("listener_recovery", Context.MODE_PRIVATE)
+        val last = prefs.getLong("toggle_at", -1L).takeIf { it >= 0 }
+        if (!ListenerTogglePolicy.shouldToggle(connectionState.disconnectedFor(now), last, now)) return
+        prefs.edit().putLong("toggle_at", now).apply()
+        // Flip a dummy component, never the listener itself: a PACKAGE_CHANGED handled while the
+        // listener is disabled would make ManagedServices drop the notification-access grant.
+        val trigger = ComponentName(app, ListenerRebindTrigger::class.java)
+        val pm = app.packageManager
+        try {
+            val next = if (pm.getComponentEnabledSetting(trigger) == PackageManager.COMPONENT_ENABLED_STATE_ENABLED)
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED else PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            pm.setComponentEnabledSetting(trigger, next, PackageManager.DONT_KILL_APP)
+            AppLog.i("Listener", "Запрошена повторная привязка через изменение пакета")
+        } catch (_: Exception) {
+            AppLog.w("Listener", "Не удалось запросить повторную привязку через изменение пакета")
+        }
+    }
+
+    /** Repairs a listener left disabled by the 1.5.x component toggle. */
+    fun ensureComponentEnabled(context: Context) {
+        val component = ComponentName(context, BankNotificationListener::class.java)
+        val pm = context.packageManager
+        try {
+            val state = pm.getComponentEnabledSetting(component)
+            if (state != PackageManager.COMPONENT_ENABLED_STATE_DEFAULT && state != PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
+                pm.setComponentEnabledSetting(component, PackageManager.COMPONENT_ENABLED_STATE_DEFAULT, PackageManager.DONT_KILL_APP)
+            }
+        } catch (_: Exception) {
+            AppLog.w("Listener", "Не удалось включить компонент слушателя")
         }
     }
 

@@ -23,7 +23,7 @@ Android-приложение для перехвата push-уведомлени
 ### Вариант 1: Подписанный APK из GitLab
 
 Откройте [последний release APK](https://gitlab.9qw.ru/9qw/bank-notify/-/jobs/artifacts/main/browse/dist?job=release-apk)
-и скачайте `BankNotify-1.6.2-release.apk`. Сборка запускается после push в `main`:
+и скачайте `BankNotify-1.6.3-release.apk`. Сборка запускается после push в `main`:
 сначала тесты, lint и debug APK, затем подписанный release APK. Подпись сохранена
 от прежних версий: устанавливайте APK поверх приложения, не удаляя его.
 Настройки, история и очередь сохранятся при обновлении.
