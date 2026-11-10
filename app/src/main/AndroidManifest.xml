@@ -59,6 +59,12 @@
                 android:value="conversations|alerting|silent|ongoing" />
         </service>
 
+        <!-- Toggled only to emit PACKAGE_CHANGED so the system rebinds the listener. -->
+        <receiver
+            android:name=".ListenerRebindTrigger"
+            android:enabled="false"
+            android:exported="false" />
+
         <receiver
             android:name=".BootCompleteReceiver"
             android:exported="false">

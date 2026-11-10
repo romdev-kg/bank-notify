@@ -10,6 +10,7 @@ class BankNotifyApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         AppLog.initialize(this)
+        ListenerRecovery.ensureComponentEnabled(this)
         RecoveryWork.start(this)
         RecoveryWork.intakeScope.launch { HealthcheckWorker.configure(this@BankNotifyApplication) }
     }

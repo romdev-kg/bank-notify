@@ -23,8 +23,8 @@ android {
         applicationId = "com.banknotify"
         minSdk = 26
         targetSdk = 37
-        versionCode = 11
-        versionName = "1.6.2"
+        versionCode = 12
+        versionName = "1.6.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         val buildDate = SimpleDateFormat("dd.MM.yyyy", Locale.forLanguageTag("ru")).format(Date())

@@ -135,6 +135,7 @@ class MainActivity : AppCompatActivity() {
         updateStatus(tvStatus, statusIndicator)
 
         btnStatus.setOnClickListener {
+            ensureListenerConnected()
             updateStatus(tvStatus, statusIndicator)
         }
 
